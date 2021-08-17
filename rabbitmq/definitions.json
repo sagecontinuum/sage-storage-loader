@@ -1,0 +1,31 @@
+{
+    "users": [],
+    "vhosts": [
+        {"name": "/"}
+    ],
+    "permissions": [],
+    "topic_permissions": [],
+    "parameters": [],
+    "policies": [],
+    "queues": [
+        {
+            "name": "influx-messages",
+            "vhost":"/",
+            "durable":true,
+            "auto_delete": false,
+            "arguments":{}
+        }
+    ],
+    "exchanges": [
+        {
+            "name": "waggle.msg",
+            "vhost": "/",
+            "type": "topic",
+            "durable": true,
+            "auto_delete": false,
+            "internal": false,
+            "arguments": {}
+        }
+    ],
+    "bindings": [{"source":"waggle.msg","vhost":"/","destination":"influx-messages","destination_type":"queue","routing_key":"#","arguments":{}}]
+}
