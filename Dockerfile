@@ -3,7 +3,7 @@
 # docker build -t waggle/sage-uploader .
 # docker run -ti  waggle/sage-uploader
 # for development:
-# docker run -ti -v ${PWD}:/go/src/app/ -v ${PWD}/temp/rmq/:/tls/ -v ${PWD}/temp/ca/:/ca/ --entrypoint /bin/bash waggle/sage-uploader
+# docker run -ti --rm --env-file ./.env -v ${PWD}:/go/src/app/ -v ${PWD}/temp/rmq/:/tls/ -v ${PWD}/temp/ca/:/ca/ --entrypoint /bin/bash waggle/sage-uploader
 
 FROM golang:1.16
 
@@ -26,23 +26,6 @@ ADD rwmutex /go/src/app/rwmutex
 # got get ... will create/append go.sum
 
 RUN go build -o uploader
-
-ENV s3Endpoint=http://host.docker.internal:9001
-ENV s3accessKeyID=minio
-ENV s3secretAccessKey=minio123
-ENV s3bucket=sage
-
-ENV rabbitmq_host=host.docker.internal
-ENV rabbitmq_port=5671
-ENV rabbitmq_user=object-store-uploader
-ENV rabbitmq_password=test
-ENV rabbitmq_exchange="waggle.msg"
-ENV rabbitmq_queue="influx-messages"
-ENV rabbitmq_routingkey="#"
-
-ENV rabbitmq_cacert_file=/ca/cacert.pem
-ENV rabbitmq_cert_file=/tls/beehive-rabbitmq.cert.pem
-ENV rabbitmq_key_file=/tls/beehive-rabbitmq.key.pem
 
 
 ENTRYPOINT [ "./uploader" ]

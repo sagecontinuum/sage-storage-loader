@@ -4,7 +4,7 @@ mkdir -p ./temp
 
 EXAMPLE_DIR="./temp/node-000048b02d15bc8c/uploads/plugin-image-sampler/0.1.1/1621658141892137216-18cbbd563d01ec2c0678f2c129cb8c9c66bd0a05/"
 mkdir -p ${EXAMPLE_DIR}
-echo '{"ts":1621658141892137216,"shasum":"18cbbd563d01ec2c0678f2c129cb8c9c66bd0a05","labels":{"filename":"sample.jpg"}, "meta":{"info": "important"}}'  > ${EXAMPLE_DIR}/meta
+echo '{"ts":1621658141892137216,"shasum":"18cbbd563d01ec2c0678f2c129cb8c9c66bd0a05","labels":{"filename":"sample.jpg", "info": "important"}}'  > ${EXAMPLE_DIR}/meta
 echo "hello world" > ${EXAMPLE_DIR}/data
 #dd if=/dev/random of=${EXAMPLE_DIR}/data bs=1M count=100
 

@@ -8,9 +8,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 type MetaData struct {
@@ -119,7 +124,7 @@ func getMetadata(full_dir string) (m *MetaData, err error) {
 func processing(id int, job Job) (err error) {
 	fmt.Printf("Worker %d: processing job %s\n", id, string(job))
 	dir := string(job) // starts with  node-000048b02d...
-	full_dir := filepath.Join(Directory, dir)
+	full_dir := filepath.Join(dataDirectory, dir)
 
 	var p *pInfo
 	p, err = parseUploadPath(dir)
@@ -148,11 +153,13 @@ func processing(id int, job Job) (err error) {
 	}
 	fmt.Printf("Worker %d: got EpochNano %d\n", id, meta.EpochNano)
 
+	//spew.Dump(meta)
 	if meta.Meta == nil { // read Labels only if Meta is empty
 		meta.Meta = meta.Labels
 		meta.Labels = nil
 	}
 	meta.Shasum = nil
+	//spew.Dump(meta)
 
 	labelFilenameIf, ok := meta.Meta["filename"]
 	if !ok {
@@ -170,21 +177,28 @@ func processing(id int, job Job) (err error) {
 		return
 	}
 
+	// add info extracted from path
+	meta.Meta["node"] = strings.ToLower(p.NodeID)
+	meta.Meta["plugin"] = p.Namespace + "/" + p.Name + ":" + p.Version
+
 	timestamp := time.Unix(meta.EpochNano/1e9, meta.EpochNano%1e9)
 	fmt.Printf("Worker %d: got timestamp %s\n", id, timestamp)
 
 	timestamp_date := timestamp.Format("20060201")
 
-	bucket_name := fmt.Sprintf("%s-%s-%s-%s-%s", p.NodeID, p.Namespace, p.Name, p.Version, timestamp_date)
-	log.Printf("bucket_name: %s", bucket_name)
-	bucket_id := ""
-	bucket_id, err = getOrCreateBucket(bucket_name)
-	if err != nil {
-		err = fmt.Errorf("getOrCreateBucket failed: %s", err.Error())
-		return
-	}
+	if false {
+		bucket_name := fmt.Sprintf("%s-%s-%s-%s-%s", p.NodeID, p.Namespace, p.Name, p.Version, timestamp_date)
+		log.Printf("bucket_name: %s", bucket_name)
+		bucket_id := ""
+		bucket_id, err = getOrCreateBucket(bucket_name)
+		if err != nil {
+			err = fmt.Errorf("getOrCreateBucket failed: %s", err.Error())
+			return
+		}
 
-	log.Printf("bucket_id: %s", bucket_id)
+		log.Printf("bucket_id: %s", bucket_id)
+	}
+	//bucket_id := ""
 
 	uploadTarget := "s3"
 
@@ -194,40 +208,110 @@ func processing(id int, job Job) (err error) {
 	dataFileLocal := filepath.Join(full_dir, "data")
 	metaFileLocal := filepath.Join(full_dir, "meta")
 
-	var sageFileUrl string
-	sageFileUrl, err = uploadFile(uploadTarget, bucket_id, dataFileLocal, targetNameData)
-	if err != nil {
-		return
+	rootFolder := "node-data"
+	jobID := "sage"
+	instanceID := p.Namespace + "-" + p.Name + "-" + p.Version
+	outputID := "default"
+	s3path := fmt.Sprintf("%s/%s/%s/%s/%s", rootFolder, jobID, instanceID, outputID, p.NodeID)
+
+	var s3metadata map[string]string
+	skipUpload := false
+	if uploadTarget == "s3" {
+
+		s3metadata = make(map[string]string)
+
+		s3metadata["name"] = meta.Name
+		s3metadata["ts"] = strconv.FormatInt(meta.EpochNano, 10)
+		if meta.Shasum != nil {
+			s3metadata["shasum"] = *meta.Shasum
+		}
+		//s3metadata["val"] = meta.Value
+
+		for key, value := range meta.Meta {
+
+			value_str, ok := value.(string)
+			if ok {
+				s3metadata["meta."+key] = value_str
+			} else {
+				fmt.Printf("Did not add metdata %s", key)
+			}
+		}
+
+		s3key := filepath.Join(s3path, targetNameData)
+
+		// check and skip if file exists
+		input := &s3.ListObjectsV2Input{
+			Bucket:  aws.String(s3bucket),
+			Prefix:  aws.String(s3key),
+			MaxKeys: aws.Int64(2),
+		}
+
+		var result *s3.ListObjectsV2Output
+		result, err = svc.ListObjectsV2(input)
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				case s3.ErrCodeNoSuchBucket:
+					fmt.Println(s3.ErrCodeNoSuchBucket, aerr.Error())
+				default:
+					fmt.Println(aerr.Error())
+				}
+			} else {
+				// Print the error, cast err to awserr.Error to get the Code and
+				// Message from an error.
+				fmt.Println(err.Error())
+			}
+			err = nil
+		} else {
+
+			//fmt.Println(result)
+
+			if len(result.Contents) == 2 {
+				fmt.Printf("Files already exist")
+				skipUpload = true
+			}
+		}
 	}
-	fmt.Printf("upload success: %s %s\n", bucket_id, targetNameData)
-	_, err = uploadFile(uploadTarget, bucket_id, metaFileLocal, targetNameMeta)
-	if err != nil {
-		return
+
+	if !skipUpload {
+		var sageFileUrl string
+		sageFileUrl, err = uploadFile(uploadTarget, s3path, dataFileLocal, targetNameData, s3metadata)
+		if err != nil {
+			return
+		}
+
+		_, err = uploadFile(uploadTarget, s3path, metaFileLocal, targetNameMeta, nil)
+		if err != nil {
+			return
+		}
+
+		fmt.Printf("upload success: %s %s (and .meta)\n", s3path, targetNameData)
+
+		meta.Value = sageFileUrl
+
+		if send_rmq_message {
+			//send message
+			var jsonBytes []byte
+			jsonBytes, err = json.Marshal(meta)
+			if err != nil {
+				return
+			}
+
+			// ToLower should not be needed, just to be safe
+			err = send_amqp_message("node-"+strings.ToLower(p.NodeID), jsonBytes)
+			if err != nil {
+				return
+			}
+			fmt.Printf("RMQ message sent %s\n", sageFileUrl)
+		}
 	}
-
-	fmt.Printf("upload success: %s %s\n", bucket_id, targetNameMeta)
-
-	meta.Value = sageFileUrl
-
-	//send message
-	var jsonBytes []byte
-	jsonBytes, err = json.Marshal(meta)
-	if err != nil {
-		return
-	}
-
-	err = notify_message(p.NodeID, jsonBytes)
-	if err != nil {
-		return
-	}
-	fmt.Printf("RMQ message sent %s\n", sageFileUrl)
-
 	// *** delete files
-
-	err = os.RemoveAll(full_dir)
-	if err != nil {
-		err = fmt.Errorf("can not delete directory (%s): %s", full_dir, err.Error())
-		return
+	if delete_files_on_success {
+		err = os.RemoveAll(full_dir)
+		if err != nil {
+			err = fmt.Errorf("can not delete directory (%s): %s", full_dir, err.Error())
+			return
+		}
 	}
 
 	return

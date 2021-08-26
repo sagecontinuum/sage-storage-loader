@@ -31,10 +31,10 @@ type SAGEBucket struct {
 	//Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
-func uploadFile(uploadTarget string, bucket_id string, filename string, targetFilename string) (sageFileUrl string, err error) {
+func uploadFile(uploadTarget string, bucket_id string, filename string, targetFilename string, meta map[string]string) (sageFileUrl string, err error) {
 	switch uploadTarget {
 	case "s3":
-		return uploadFileToS3(bucket_id, filename, targetFilename)
+		return uploadFileToS3(bucket_id, filename, targetFilename, meta)
 	case "sage":
 		return uploadFileToSage(bucket_id, filename, targetFilename)
 	default:
@@ -43,9 +43,12 @@ func uploadFile(uploadTarget string, bucket_id string, filename string, targetFi
 	}
 }
 
-func uploadFileToS3(bucket_id string, filename string, targetFilename string) (sageFileUrl string, err error) {
+// prefix is simply the path:  <path>/<targetFilename>
+func uploadFileToS3(prefix string, filename string, targetFilename string, meta map[string]string) (sageFileUrl string, err error) {
 
-	s3_bucket := "sage"
+	//s3_bucket := "sage"
+
+	s3key := filepath.Join(prefix, targetFilename)
 
 	md5_b64 := ""
 	md5_b64, err = run_command(fmt.Sprintf("openssl dgst -md5 -binary %s | base64", filename), true)
@@ -67,10 +70,11 @@ func uploadFileToS3(bucket_id string, filename string, targetFilename string) (s
 
 	//https://docs.aws.amazon.com/sdk-for-go/api/service/s3/s3manager/#Uploader
 	upi := &s3manager.UploadInput{
-		Bucket:     aws.String(s3_bucket),
-		Key:        aws.String(filepath.Join(bucket_id, targetFilename)),
+		Bucket:     aws.String(s3bucket),
+		Key:        aws.String(s3key),
 		Body:       f,
 		ContentMD5: aws.String(md5_b64),
+		Metadata:   aws.StringMap(meta),
 	}
 
 	// Upload the file to S3.
@@ -83,8 +87,8 @@ func uploadFileToS3(bucket_id string, filename string, targetFilename string) (s
 
 	if false {
 		objectInput := s3.GetObjectInput{
-			Bucket: aws.String(s3_bucket),
-			Key:    aws.String(filepath.Join(bucket_id, targetFilename)),
+			Bucket: aws.String(s3bucket),
+			Key:    aws.String(filepath.Join(prefix, targetFilename)),
 		}
 
 		var out *s3.GetObjectOutput
@@ -97,7 +101,8 @@ func uploadFileToS3(bucket_id string, filename string, targetFilename string) (s
 	}
 
 	// construct URL for users
-	sageFileUrl = fmt.Sprintf("%s/api/v1/objects/%s/%s", sage_storage_api, bucket_id, targetFilename)
+	//sageFileUrl = fmt.Sprintf("%s/api/v1/objects/%s/%s", sage_storage_api, bucket_id, targetFilename)
+	sageFileUrl = "missing"
 
 	return
 }

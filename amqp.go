@@ -115,7 +115,7 @@ func amqp_connection() (err error) {
 	return
 }
 
-func notify_message(username string, msg []byte) (err error) {
+func send_amqp_message(username string, msg []byte) (err error) {
 
 	//body := "Hello World!"
 	for {

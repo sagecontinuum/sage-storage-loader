@@ -2,19 +2,21 @@
 Load files from filesystem into SAGE object store
 
 
-This uploader load files from the beehive filesystem to the SAGE object store. Nodes upload large files via rsync to beehive and the the files are cached on the beehive filesystem. This loader checks the upload directrory for new files and uploads them (using mulitiple worker processes) to buckets in the SAGE object store.
-
-The Sage object store API is only used to create buckets. For performance reasons, this uploader by-passes Sage object store API and then uploads files directly into the underlying S3 store. (Normal sage users do not have the permission to upload to the backend S3, they can only upload to the Sage API)
+This uploader load files from the beehive filesystem to an S3 bucket. Nodes upload large files via rsync to beehive and the the files are cached on the beehive filesystem. This loader checks the upload directrory for new files and uploads them (using mulitiple worker processes) to S3.
 
 
 
+# Development
+
+MinIO instance from [https://github.com/sagecontinuum/sage-storage-api](https://github.com/sagecontinuum/sage-storage-api) can be used for testing.
 
 
+```console
+docker build -t waggle/sage-uploader .
+docker run -ti --rm --env-file ./.env -v ${PWD}/temp:/data  waggle/sage-uploader
+```
 
-
-
-
-# Dev RMQ
+# Dev RMQ  ( not used anymore )
 
 ```console
 ./create_certs.sh
@@ -29,9 +31,6 @@ create exchange and users
 ```console
 ./config_test_rabbitmq.sh
 ```
-
-
-
 
 management UI:
 [http://localhost:8081](http://localhost:8081)
