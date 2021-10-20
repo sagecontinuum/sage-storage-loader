@@ -16,7 +16,7 @@ docker build -t waggle/sage-uploader .
 docker run -ti --rm --env-file ./.env -v ${PWD}/temp:/data  waggle/sage-uploader
 ```
 
-# Dev RMQ  ( not used anymore )
+# Dev RMQ  ( not used anymore ? )
 
 ```console
 ./create_certs.sh

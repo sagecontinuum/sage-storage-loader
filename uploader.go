@@ -50,26 +50,31 @@ var rabbitmq_key_file string
 
 var send_rmq_message bool
 var delete_files_on_success bool
+var one_fs_scan_only bool
+var fs_sleep_sec int
+
+var PretendUpload = false
 
 //var maxMemory int64
 var s3bucket string
 
-func readFilesystemLoop(files_dir string) {
+func readFilesystemLoop(files_dir string, perFileDelay time.Duration) {
 
 	count := 0
 	for {
 		count = (count + 1) % 10
 		log.Printf("start readFilesystem")
-		err := readFilesystem(files_dir, (count == 9), (count == 9))
+		err := readFilesystem(files_dir, (count == 9), (count == 9), perFileDelay)
 		if err != nil {
 			log.Fatal(err)
 		}
-		time.Sleep(time.Second * 3)
+		log.Printf("start readFilesystem again in %d seconds", fs_sleep_sec)
+		time.Sleep(time.Second * time.Duration(fs_sleep_sec))
 	}
 
 }
 
-func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool) (err error) {
+func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool, perFileDelay time.Duration) (err error) {
 	total_data_files := 0
 	total_datameta_files := 0
 	new_files_count := 0
@@ -81,6 +86,7 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool)
 		files_dir = files_dir + "/"
 	}
 
+	//max_files_add_in_loop := 100
 	for _, glob_str := range []string{glob_str_correct, glob_str_no_namespace} {
 
 		log.Printf("Searching for files in %s", glob_str)
@@ -93,18 +99,35 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool)
 		}
 		for _, m := range matches {
 			total_data_files++
-
+			//if total_data_files >= max_files_add_in_loop {
+			//	return // we do not want to read too many files at once
+			//}
 			dir := filepath.Dir(m)
+
+			done_filename := filepath.Join(dir, "done")
+			_, err = os.Stat(done_filename)
+			if err == nil {
+				// done file exists, skip...
+				continue
+			}
+			err = nil
+
 			meta_filename := filepath.Join(dir, "meta")
 
 			_, err = os.Stat(meta_filename)
 			if err != nil {
 				// meta file does not exist yet, continue...
+				err = nil
 				continue
 			}
 			total_datameta_files++
 
 			dir = strings.TrimPrefix(dir, files_dir)
+
+			// slow this down so we do not starve other processes
+			if new_files_count%10 == 0 {
+				time.Sleep(perFileDelay)
+			}
 
 			var fileAdded bool
 			fileAdded, err = index.Add(dir)
@@ -112,8 +135,18 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool)
 				return
 			}
 			if fileAdded {
-				log.Println("(readFilesystem) added " + dir)
+
 				new_files_count++
+			}
+
+			if fileAdded {
+				if new_files_count < 20 {
+					log.Println("(readFilesystem) added " + dir)
+
+				} else if new_files_count%100 == 0 {
+					log.Printf("(readFilesystem) new_files_count: %d\n", new_files_count)
+				}
+
 			}
 
 		}
@@ -235,14 +268,15 @@ func getPendingCandidates(max_count int) (candidates []string, err error) {
 	}
 	candidates = []string{}
 	for key, value := range index.Map {
-		fmt.Printf("key: %s %s\n", key, value.String())
+		//fmt.Printf("key: %s %s\n", key, value.String())
 		if value != Pending {
 			continue
 		}
-		if len(candidates) >= max_count {
-			continue
-		}
+
 		candidates = append(candidates, key)
+		if len(candidates) >= max_count {
+			return
+		}
 	}
 
 	return
@@ -435,8 +469,10 @@ func main() {
 	}
 
 	max_worker_count := getEnvInt("workers", 1) // 10 suggested for production
-	queue_size := 10                            // 50 suggested for production
-	candiateArrayLen := 50                      // 100 suggested for production
+	queue_size := 50                            // 50 suggested for production
+	candiateArrayLen := 100                     // 100 suggested for production
+
+	fs_sleep_sec = getEnvInt("fs_sleep_sec", 3)
 
 	fmt.Println("SAGE Uploader")
 
@@ -488,6 +524,7 @@ func main() {
 	}
 
 	delete_files_on_success = getEnvBool("delete_files_on_success", false)
+	one_fs_scan_only = getEnvBool("one_fs_scan_only", false)
 
 	// create channels
 	jobQueue = make(chan Job, queue_size)
@@ -503,10 +540,14 @@ func main() {
 
 	// populate index
 
-	dataDirectory = getEnvString("data-dir", "/data")
+	dataDirectory = getEnvString("data_dir", "/data")
 
-	go readFilesystemLoop(dataDirectory)
+	readFilesystem(dataDirectory, delete_files_on_success, delete_files_on_success, 0)
+	log.Printf("Initial readFilesystem done.")
 
+	if !one_fs_scan_only {
+		go readFilesystemLoop(dataDirectory, 100*time.Millisecond)
+	}
 	// debug output
 	//index.Print()
 	if send_rmq_message {
@@ -529,8 +570,10 @@ func main() {
 	// start upload workers
 	wg := new(sync.WaitGroup)
 	wg.Add(max_worker_count)
+	workers := make([]*Worker, max_worker_count)
 	for i := 1; i <= max_worker_count; i++ {
-		go worker(i, wg, jobQueue, broadcast)
+		workers[i-1] = &Worker{ID: i, wg: wg, jobQueue: jobQueue, broadcast: broadcast}
+		go workers[i-1].Run()
 	}
 
 	time.Sleep(time.Second * 1)

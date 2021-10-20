@@ -60,6 +60,10 @@ func uploadFileToS3(prefix string, filename string, targetFilename string, meta 
 
 	log.Printf("md5_b64: %s\n", md5_b64)
 
+	if PretendUpload {
+		return
+	}
+
 	uploader := s3manager.NewUploader(newSession)
 
 	f, err := os.Open(filename)
@@ -80,7 +84,7 @@ func uploadFileToS3(prefix string, filename string, targetFilename string, meta 
 	// Upload the file to S3.
 	result, err := uploader.Upload(upi)
 	if err != nil {
-		err = fmt.Errorf("failed to upload file, %v", err)
+		err = fmt.Errorf("failed to upload file, %v (%s)", err, spew.Sprint(upi))
 		return
 	}
 	fmt.Printf("file uploaded to, %s\n", result.Location)

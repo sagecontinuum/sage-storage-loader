@@ -18,6 +18,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+type Worker struct {
+	ID        int
+	Skipped   int64
+	wg        *sync.WaitGroup
+	jobQueue  <-chan Job
+	broadcast <-chan string
+}
+
 type MetaData struct {
 	Name         string                 `json:"name"` // always set as "upload"
 	EpochNano    int64                  `json:"ts,omitempty"`
@@ -37,9 +45,9 @@ var sage_storage_api = "http://host.docker.internal:8080"
 var sage_storage_token = "user:test"
 var sage_storage_username = "test"
 
-func worker(id int, wg *sync.WaitGroup, jobQueue <-chan Job, broadcast <-chan string) {
-	defer wg.Done()
-	fmt.Printf("Worker %d starting\n", id)
+func (worker *Worker) Run() {
+	defer worker.wg.Done()
+	fmt.Printf("Worker %d starting\n", worker.ID)
 
 FOR:
 	for {
@@ -47,7 +55,7 @@ FOR:
 		select {
 		case signal := <-broadcast:
 			if signal == "STOP" {
-				fmt.Printf("Worker %d received STOP signal.\n", id)
+				fmt.Printf("Worker %d received STOP signal.\n", worker.ID)
 				break FOR
 			}
 		default:
@@ -55,7 +63,7 @@ FOR:
 
 		select {
 		case job := <-jobQueue:
-			err := processing(id, job)
+			err := processing(worker.ID, job)
 			if err != nil {
 				log.Printf("Somthing went wrong: %s", err.Error())
 				index.Set(string(job), Failed, "worker")
@@ -69,7 +77,7 @@ FOR:
 			time.Sleep(time.Second)
 		}
 	}
-	fmt.Printf("Worker %d stopping.\n", id)
+	fmt.Printf("Worker %d stopping.\n", worker.ID)
 }
 
 type pInfo struct {
@@ -126,16 +134,26 @@ func processing(id int, job Job) (err error) {
 	dir := string(job) // starts with  node-000048b02d...
 	full_dir := filepath.Join(dataDirectory, dir)
 
+	// if !delete_files_on_success {
+	// 	if _, err = os.Stat(flag_file); err == nil {
+	// 		// already exists
+	// 		//fmt.Printf("Worker %d: Flag file found, skipping upload.\n", id)
+	// 		return
+	// 	}
+	// }
+
+	err = nil
+
 	var p *pInfo
 	p, err = parseUploadPath(dir)
 	if err != nil {
 		return
 	}
 
-	fmt.Printf("Worker %d: got node_id %s\n", id, p.NodeID)
-	fmt.Printf("Worker %d: got plugin_namespace %s\n", id, p.Namespace)
-	fmt.Printf("Worker %d: got plugin_name %s\n", id, p.Name)
-	fmt.Printf("Worker %d: got plugin_version %s\n", id, p.Version)
+	//fmt.Printf("Worker %d: got node_id %s\n", id, p.NodeID)
+	//fmt.Printf("Worker %d: got plugin_namespace %s\n", id, p.Namespace)
+	//fmt.Printf("Worker %d: got plugin_name %s\n", id, p.Name)
+	//fmt.Printf("Worker %d: got plugin_version %s\n", id, p.Version)
 
 	var meta *MetaData
 	meta, err = getMetadata(full_dir)
@@ -146,12 +164,12 @@ func processing(id int, job Job) (err error) {
 	meta.Name = "upload"
 	//spew.Dump(meta)
 
-	fmt.Printf("Worker %d: got shasum %s\n", id, meta.Shasum)
+	//fmt.Printf("Worker %d: got shasum %s\n", id, *meta.Shasum)
 	if meta.EpochNanoOld != nil {
 		meta.EpochNano = *meta.EpochNanoOld
 		meta.EpochNanoOld = nil
 	}
-	fmt.Printf("Worker %d: got EpochNano %d\n", id, meta.EpochNano)
+	//fmt.Printf("Worker %d: got EpochNano %d\n", id, meta.EpochNano)
 
 	//spew.Dump(meta)
 	if meta.Meta == nil { // read Labels only if Meta is empty
@@ -182,7 +200,7 @@ func processing(id int, job Job) (err error) {
 	meta.Meta["plugin"] = p.Namespace + "/" + p.Name + ":" + p.Version
 
 	timestamp := time.Unix(meta.EpochNano/1e9, meta.EpochNano%1e9)
-	fmt.Printf("Worker %d: got timestamp %s\n", id, timestamp)
+	//fmt.Printf("Worker %d: got timestamp %s\n", id, timestamp)
 
 	timestamp_date := timestamp.Format("20060201")
 
@@ -208,11 +226,13 @@ func processing(id int, job Job) (err error) {
 	dataFileLocal := filepath.Join(full_dir, "data")
 	metaFileLocal := filepath.Join(full_dir, "meta")
 
+	//TODO:  rootFolder via config ,  jobID and instanceID(task) from json
+
 	rootFolder := "node-data"
 	jobID := "sage"
 	instanceID := p.Namespace + "-" + p.Name + "-" + p.Version
-	outputID := "default"
-	s3path := fmt.Sprintf("%s/%s/%s/%s/%s", rootFolder, jobID, instanceID, outputID, p.NodeID)
+	//outputID := "default"
+	s3path := fmt.Sprintf("%s/%s/%s/%s", rootFolder, jobID, instanceID, p.NodeID)
 
 	var s3metadata map[string]string
 	skipUpload := false
@@ -237,38 +257,40 @@ func processing(id int, job Job) (err error) {
 			}
 		}
 
-		s3key := filepath.Join(s3path, targetNameData)
+		if !PretendUpload {
+			s3key := filepath.Join(s3path, targetNameData)
 
-		// check and skip if file exists
-		input := &s3.ListObjectsV2Input{
-			Bucket:  aws.String(s3bucket),
-			Prefix:  aws.String(s3key),
-			MaxKeys: aws.Int64(2),
-		}
-
-		var result *s3.ListObjectsV2Output
-		result, err = svc.ListObjectsV2(input)
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case s3.ErrCodeNoSuchBucket:
-					fmt.Println(s3.ErrCodeNoSuchBucket, aerr.Error())
-				default:
-					fmt.Println(aerr.Error())
-				}
-			} else {
-				// Print the error, cast err to awserr.Error to get the Code and
-				// Message from an error.
-				fmt.Println(err.Error())
+			// check and skip if file exists
+			input := &s3.ListObjectsV2Input{
+				Bucket:  aws.String(s3bucket),
+				Prefix:  aws.String(s3key),
+				MaxKeys: aws.Int64(2),
 			}
-			err = nil
-		} else {
 
-			//fmt.Println(result)
+			var result *s3.ListObjectsV2Output
+			result, err = svc.ListObjectsV2(input)
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); ok {
+					switch aerr.Code() {
+					case s3.ErrCodeNoSuchBucket:
+						fmt.Println(s3.ErrCodeNoSuchBucket, aerr.Error())
+					default:
+						fmt.Println(aerr.Error())
+					}
+				} else {
+					// Print the error, cast err to awserr.Error to get the Code and
+					// Message from an error.
+					fmt.Println(err.Error())
+				}
+				err = nil
+			} else {
 
-			if len(result.Contents) == 2 {
-				fmt.Printf("Files already exist")
-				skipUpload = true
+				//fmt.Println(result)
+
+				if len(result.Contents) == 2 {
+					fmt.Println("Files already exist in S3")
+					skipUpload = true
+				}
 			}
 		}
 	}
@@ -312,6 +334,20 @@ func processing(id int, job Job) (err error) {
 			err = fmt.Errorf("can not delete directory (%s): %s", full_dir, err.Error())
 			return
 		}
+	} else {
+
+		flag_file := filepath.Join(full_dir, "done")
+
+		var emptyFlagFile *os.File
+		emptyFlagFile, err = os.Create(flag_file)
+		if err != nil {
+			err = fmt.Errorf("could not create flag file: %s", err.Error())
+			return
+
+		}
+		//log.Println(emptyFile)
+		emptyFlagFile.Close()
+
 	}
 
 	return
