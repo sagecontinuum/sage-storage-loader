@@ -1,6 +1,8 @@
 package main
 
-import "github.com/sagecontinuum/sage-storage-loader/rwmutex"
+import (
+	"github.com/sagecontinuum/sage-storage-loader/rwmutex"
+)
 
 type BucketMap struct {
 	rwmutex.RWMutex

@@ -9,6 +9,13 @@ const (
 	Failed
 )
 
+var stateStrings = []string{
+	Pending: "PENDING",
+	Active:  "ACTIVE",
+	Done:    "DONE",
+	Failed:  "FAILED",
+}
+
 func (d State) String() string {
-	return [...]string{"PENDING", "ACTIVE", "DONE", "FAILED"}[d]
+	return stateStrings[d]
 }

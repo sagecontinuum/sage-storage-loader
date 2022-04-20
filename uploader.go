@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -23,9 +24,6 @@ import (
 
 var index Index
 var bucketMap BucketMap
-
-var jobQueue chan Job
-var broadcast chan string
 
 var dataDirectory string
 
@@ -59,7 +57,6 @@ var PretendUpload = false
 var s3bucket string
 
 func readFilesystemLoop(files_dir string, perFileDelay time.Duration) {
-
 	count := 0
 	for {
 		count = (count + 1) % 10
@@ -74,7 +71,7 @@ func readFilesystemLoop(files_dir string, perFileDelay time.Duration) {
 
 }
 
-func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool, perFileDelay time.Duration) (err error) {
+func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool, perFileDelay time.Duration) error {
 	total_data_files := 0
 	total_datameta_files := 0
 	new_files_count := 0
@@ -88,15 +85,13 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 
 	//max_files_add_in_loop := 100
 	for _, glob_str := range []string{glob_str_correct, glob_str_no_namespace} {
-
 		log.Printf("Searching for files in %s", glob_str)
 
-		var matches []string
-		matches, err = filepath.Glob(glob_str)
+		matches, err := filepath.Glob(glob_str)
 		if err != nil {
-			err = fmt.Errorf("filepath.Glob failed: %s", err.Error())
-			return
+			return fmt.Errorf("filepath.Glob failed: %s", err.Error())
 		}
+
 		for _, m := range matches {
 			total_data_files++
 			//if total_data_files >= max_files_add_in_loop {
@@ -104,22 +99,14 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 			//}
 			dir := filepath.Dir(m)
 
-			done_filename := filepath.Join(dir, "done")
-			_, err = os.Stat(done_filename)
-			if err == nil {
-				// done file exists, skip...
+			if _, err := os.Stat(filepath.Join(dir, "done")); err == nil {
 				continue
 			}
-			err = nil
 
-			meta_filename := filepath.Join(dir, "meta")
-
-			_, err = os.Stat(meta_filename)
-			if err != nil {
-				// meta file does not exist yet, continue...
-				err = nil
+			if _, err = os.Stat(filepath.Join(dir, "meta")); errors.Is(err, os.ErrNotExist) {
 				continue
 			}
+
 			total_datameta_files++
 
 			dir = strings.TrimPrefix(dir, files_dir)
@@ -129,24 +116,19 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 				time.Sleep(perFileDelay)
 			}
 
-			var fileAdded bool
-			fileAdded, err = index.Add(dir)
+			fileAdded, err := index.Add(dir)
 			if err != nil {
-				return
+				return err
 			}
-			if fileAdded {
 
+			if fileAdded {
 				new_files_count++
-			}
-
-			if fileAdded {
 				if new_files_count < 20 {
 					log.Println("(readFilesystem) added " + dir)
 
 				} else if new_files_count%100 == 0 {
 					log.Printf("(readFilesystem) new_files_count: %d\n", new_files_count)
 				}
-
 			}
 
 		}
@@ -156,15 +138,12 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 	log.Printf("(readFilesystem) New files added: %d", new_files_count)
 
 	if cleanupDirectories {
-
 		// timestamp-sha directory should not exist anymore
 		globVersionDirs := filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*")
 
-		var matches []string
-		matches, err = filepath.Glob(globVersionDirs)
+		matches, err := filepath.Glob(globVersionDirs)
 		if err != nil {
-			err = fmt.Errorf("filepath.Glob failed: %s", err.Error())
-			return
+			return fmt.Errorf("filepath.Glob failed: %s", err.Error())
 		}
 
 		now := time.Now()
@@ -208,25 +187,20 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 			}
 			log.Printf("deleted directory: %s", dir)
 		}
-
 	}
 
 	// this removes "Done" enries from the index
 	if cleanupDone && delete_files_on_success {
-		var toBeRemoved []string
-		toBeRemoved, err = index.GetList(Done)
+		toBeRemoved, err := index.GetList(Done)
 		if err != nil {
-			err = fmt.Errorf("could not not get list of done jobs: %s", err.Error())
-			return
+			return fmt.Errorf("could not not get list of done jobs: %s", err.Error())
 		}
 
 		log.Printf("trying to remove %d jobs from map", len(toBeRemoved))
 		count := 0
 		for _, job := range toBeRemoved {
-			err = index.Remove(job, "cleanupDone")
-			if err != nil {
-				err = fmt.Errorf("could remove job from map: %s", err.Error())
-				return
+			if err := index.Remove(job, "cleanupDone"); err != nil {
+				return fmt.Errorf("could remove job from map: %s", err.Error())
 			}
 			//delete(index.Map, job)
 			count++
@@ -234,7 +208,7 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 		log.Printf("%d jobs removed from map", count)
 	}
 
-	return
+	return nil
 }
 
 // source: https://stackoverflow.com/a/30708914/2069181
@@ -284,7 +258,7 @@ func getPendingCandidates(max_count int) (candidates []string, err error) {
 
 // TODO also clean here ?
 // TODO lock index and sleep for 3 seconds before cleanup, to give filesystem time to remove files
-func fillQueue(candidateArrayLen int) (err error) {
+func fillQueue(candidateArrayLen int, jobQueue chan Job) (err error) {
 
 	var candidates []string
 	candidates, err = getPendingCandidates(candidateArrayLen)
@@ -309,10 +283,9 @@ func fillQueue(candidateArrayLen int) (err error) {
 	return
 }
 
-func fillQueueLoop(candidateArrayLen int) {
-
+func fillQueueLoop(candidateArrayLen int, jobQueue chan Job) {
 	for {
-		err := fillQueue(candidateArrayLen)
+		err := fillQueue(candidateArrayLen, jobQueue)
 		if err != nil {
 			log.Fatalf("fillQueue failed: %s", err.Error())
 		}
@@ -459,9 +432,7 @@ func getEnvBool(key string, fallback bool) bool {
 }
 
 func main() {
-
 	// TODO: add garbage collection/notifier if old files are not moved away
-
 	useS3 := true
 
 	if useS3 {
@@ -520,15 +491,14 @@ func main() {
 		log.Printf("rabbitmq_exchange: %s", rabbitmq_exchange)
 		log.Printf("rabbitmq_queue: %s", rabbitmq_queue)
 		log.Printf("rabbitmq_routingkey: %s", rabbitmq_routingkey)
-
 	}
 
 	delete_files_on_success = getEnvBool("delete_files_on_success", false)
 	one_fs_scan_only = getEnvBool("one_fs_scan_only", false)
 
 	// create channels
-	jobQueue = make(chan Job, queue_size)
-	broadcast = make(chan string, max_worker_count+10) // +10 just to be safe
+	jobQueue := make(chan Job, queue_size)
+	shutdown := make(chan int)
 
 	// create index
 	index = Index{}
@@ -565,18 +535,18 @@ func main() {
 	}
 
 	// this process feeds workers with work
-	go fillQueueLoop(candiateArrayLen)
+	go fillQueueLoop(candiateArrayLen, jobQueue)
 
 	// start upload workers
 	wg := new(sync.WaitGroup)
 	wg.Add(max_worker_count)
-	workers := make([]*Worker, max_worker_count)
-	for i := 1; i <= max_worker_count; i++ {
-		workers[i-1] = &Worker{ID: i, wg: wg, jobQueue: jobQueue, broadcast: broadcast}
-		go workers[i-1].Run()
+
+	for i := 0; i < max_worker_count; i++ {
+		worker := &Worker{ID: i, wg: wg, jobQueue: jobQueue, shutdown: shutdown}
+		go worker.Run()
 	}
 
-	time.Sleep(time.Second * 1)
+	time.Sleep(time.Second)
 
 	fmt.Printf("Press Ctrl+C to end  (This will give workers 10 seconds to complete)\n")
 	WaitForCtrlC()
@@ -584,13 +554,7 @@ func main() {
 
 	close(jobQueue)
 	fmt.Println("jobQueue closed")
-
-	//broadcast stop
-	for i := 1; i <= max_worker_count+10; i++ {
-		broadcast <- "STOP"
-		fmt.Println("sending STOP signal")
-	}
-	fmt.Println("STOP signals sent")
+	close(shutdown)
 
 	if waitTimeout(wg, time.Second*10) {
 		fmt.Println("Timed out waiting for workers. Exit Anyway.")

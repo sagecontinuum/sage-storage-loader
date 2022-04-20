@@ -19,11 +19,11 @@ import (
 )
 
 type Worker struct {
-	ID        int
-	Skipped   int64
-	wg        *sync.WaitGroup
-	jobQueue  <-chan Job
-	broadcast <-chan string
+	ID       int
+	Skipped  int64
+	wg       *sync.WaitGroup
+	jobQueue <-chan Job
+	shutdown <-chan int
 }
 
 type MetaData struct {
@@ -53,16 +53,14 @@ FOR:
 	for {
 		// by splitting this into two selects, is is guaranteed that the broadcast is not skipped
 		select {
-		case signal := <-broadcast:
-			if signal == "STOP" {
-				fmt.Printf("Worker %d received STOP signal.\n", worker.ID)
-				break FOR
-			}
+		case <-worker.shutdown:
+			fmt.Printf("Worker %d received shutdown signal.\n", worker.ID)
+			break FOR
 		default:
 		}
 
 		select {
-		case job := <-jobQueue:
+		case job := <-worker.jobQueue:
 			err := processing(worker.ID, job)
 			if err != nil {
 				log.Printf("Somthing went wrong: %s", err.Error())
@@ -71,7 +69,6 @@ FOR:
 			} else {
 				index.Set(string(job), Done, "worker")
 			}
-
 		default:
 			// there is no work, slow down..
 			time.Sleep(time.Second)
@@ -87,28 +84,29 @@ type pInfo struct {
 	Version   string
 }
 
-func parseUploadPath(dir string) (p *pInfo, err error) {
-
-	p = &pInfo{}
+func parseUploadPath(dir string) (*pInfo, error) {
 	dir_array := strings.Split(dir, "/")
 
-	p.NodeID = strings.TrimPrefix(dir_array[0], "node-")
-	p.Namespace = "sage" // sage is the default in cases where no namespace was given
-	p.Name = ""
-	p.Version = ""
-	if len(dir_array) == 6 {
+	p := &pInfo{
+		NodeID:    strings.TrimPrefix(dir_array[0], "node-"),
+		Namespace: "sage", // sage is the default in cases where no namespace was given
+		Name:      "",
+		Version:   "",
+	}
+
+	switch len(dir_array) {
+	case 6:
 		p.Namespace = dir_array[2]
 		p.Name = dir_array[3]
 		p.Version = dir_array[4]
-	} else if len(dir_array) == 5 { // namespace is missing
+	case 5: // namespace is missing
 		p.Name = dir_array[2]
 		p.Version = dir_array[3]
-	} else {
-		err = fmt.Errorf("could not parse path %s", dir)
-		return
+	default:
+		return nil, fmt.Errorf("could not parse path %s", dir)
 	}
 
-	return
+	return p, nil
 }
 
 func getMetadata(full_dir string) (m *MetaData, err error) {
@@ -371,5 +369,4 @@ func run_command(cmd_str string, return_stdout bool) (output string, err error) 
 	output = string(output_b[:])
 
 	return
-
 }
