@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -137,4 +138,31 @@ func newTempDir(t *testing.T) string {
 	}
 
 	return root
+}
+
+type MockUploader struct {
+	Error   error
+	uploads map[string]string
+}
+
+func NewMockUploader() *MockUploader {
+	return &MockUploader{
+		uploads: make(map[string]string),
+	}
+}
+
+func (up *MockUploader) UploadFile(src, dst string, meta map[string]string) error {
+	if up.Error != nil {
+		return up.Error
+	}
+	if dst2, ok := up.uploads[src]; ok && dst != dst2 {
+		return fmt.Errorf("file uploaded to multiple destinations")
+	}
+	up.uploads[src] = dst
+	return nil
+}
+
+func (up *MockUploader) WasUploaded(src, dst string) bool {
+	dst2, ok := up.uploads[src]
+	return ok && dst == dst2
 }
