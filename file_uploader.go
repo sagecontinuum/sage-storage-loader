@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,23 +17,35 @@ type FileUploader interface {
 }
 
 type MockUploader struct {
-	Error error
+	Error   error
+	uploads map[string]string
+}
+
+func NewMockUploader() *MockUploader {
+	return &MockUploader{
+		uploads: make(map[string]string),
+	}
 }
 
 func (up *MockUploader) UploadFile(src, dst string, meta map[string]string) error {
 	if up.Error != nil {
 		return up.Error
 	}
-	log.Printf("would upload file...\nsrc: %s\ndst: %s\nmeta: %+v\n\n", src, dst, meta)
-	// TODO(sean) track results in a list or map to be used in tests
+	if dst2, ok := up.uploads[src]; ok && dst != dst2 {
+		return fmt.Errorf("file uploaded to multiple destinations")
+	}
+	up.uploads[src] = dst
 	return nil
+}
+
+func (up *MockUploader) WasUploaded(src, dst string) bool {
+	dst2, ok := up.uploads[src]
+	return ok && dst == dst2
 }
 
 type S3Uploader struct{}
 
 func (up *S3Uploader) UploadFile(src, dst string, meta map[string]string) error {
-	log.Printf("uploading file to s3: %s -> %s", src, dst)
-
 	contentMD5, err := computeContentBase64MD5(src)
 	if err != nil {
 		return err

@@ -6,22 +6,44 @@ import (
 	"testing"
 )
 
-func TestProcessing(t *testing.T) {
-	dataDirectory = newTempDir(t)
+func TestWorkerProcess(t *testing.T) {
+	testcases := map[string]struct {
+		src, dst string
+	}{
+		"default": {
+			src: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c",
+			dst: "node-data/sage/sage-imagesampler-top-0.2.5/000048b02d15bc7c/1638576647406523064-wow1.txt",
+		},
+		"namespace": {
+			src: "node-000048b02d15bc7d/uploads/namespace/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c",
+			dst: "node-data/namespace/sage-imagesampler-top-0.2.5/000048b02d15bc7d/1638576647406523064-wow1.txt",
+		},
+	}
 
-	t.Run("default", func(t *testing.T) {
-		job := Job("node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c")
-		if err := processing(123, job); err != nil {
-			t.Fatal(err)
-		}
-	})
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			dataDirectory = newTempDir(t)
 
-	t.Run("namespace", func(t *testing.T) {
-		job := Job("node-000048b02d15bc7d/uploads/namespace/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c")
-		if err := processing(123, job); err != nil {
-			t.Fatal(err)
-		}
-	})
+			uploader := NewMockUploader()
+
+			w := &Worker{
+				ID:       123,
+				Uploader: uploader,
+			}
+
+			if err := w.Process(Job(tc.src)); err != nil {
+				t.Fatal(err)
+			}
+
+			if !uploader.WasUploaded(filepath.Join(dataDirectory, tc.src, "data"), tc.dst) {
+				t.Fatalf("missing upload\nsrc: %s\ndst: %s", tc.src, tc.dst)
+			}
+
+			if !uploader.WasUploaded(filepath.Join(dataDirectory, tc.src, "meta"), tc.dst+".meta") {
+				t.Fatalf("missing upload\nsrc: %s\ndst: %s", tc.src, tc.dst)
+			}
+		})
+	}
 }
 
 func TestParseUploadPath(t *testing.T) {

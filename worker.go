@@ -19,6 +19,7 @@ import (
 type Worker struct {
 	ID       int
 	Skipped  int64
+	Uploader FileUploader
 	wg       *sync.WaitGroup
 	jobQueue <-chan Job
 	shutdown <-chan int
@@ -32,11 +33,6 @@ type MetaData struct {
 	Labels       map[string]interface{} `json:"labels,omitempty"` // only read (will write to meta)
 	Meta         map[string]interface{} `json:"meta"`
 	Value        string                 `json:"val"` // only used to output URL, input is assumed to be empty
-}
-
-// ErrorStruct _
-type ErrorStruct struct {
-	Error string `json:"error,omitempty"`
 }
 
 var sage_storage_api = "http://host.docker.internal:8080"
@@ -59,7 +55,7 @@ FOR:
 
 		select {
 		case job := <-worker.jobQueue:
-			err := processing(worker.ID, job)
+			err := worker.Process(job)
 			if err != nil {
 				log.Printf("Somthing went wrong: %s", err.Error())
 				index.Set(string(job), Failed, "worker")
@@ -119,9 +115,7 @@ func getMetadata(full_dir string) (*MetaData, error) {
 	return meta, nil
 }
 
-func processing(id int, job Job) error {
-	log.Printf("worker %d processing %s", id, job)
-
+func (w *Worker) Process(job Job) error {
 	dir := string(job) // starts with  node-000048b02d...
 	full_dir := filepath.Join(dataDirectory, dir)
 
@@ -129,7 +123,6 @@ func processing(id int, job Job) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("parsed upload info: %+v", p)
 
 	meta, err := getMetadata(full_dir)
 	if err != nil {
@@ -177,21 +170,16 @@ func processing(id int, job Job) error {
 
 	s3path := fmt.Sprintf("%s/%s/%s/%s", rootFolder, jobID, instanceID, p.NodeID)
 
-	up := &MockUploader{}
-
 	uploadMeta := convertMetaToS3Meta(meta)
 
-	if err := up.UploadFile(dataFileLocal, filepath.Join(s3path, targetNameData), uploadMeta); err != nil {
-		log.Printf("upload of data file failed: %s", err.Error())
+	if err := w.Uploader.UploadFile(dataFileLocal, filepath.Join(s3path, targetNameData), uploadMeta); err != nil {
 		return err
 	}
 
-	if err := up.UploadFile(metaFileLocal, filepath.Join(s3path, targetNameMeta), nil); err != nil {
-		log.Printf("upload of data file failed: %s", err.Error())
+	if err := w.Uploader.UploadFile(metaFileLocal, filepath.Join(s3path, targetNameMeta), nil); err != nil {
 		return err
 	}
 
-	fmt.Printf("upload success: %s %s (and .meta)\n", s3path, targetNameData)
 	return nil
 
 	// *** delete files
