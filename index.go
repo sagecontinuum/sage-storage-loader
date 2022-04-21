@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"time"
 
@@ -108,7 +107,6 @@ func (index *Index) Remove(path string, caller string) (err error) {
 // for debugging only (no locks used)
 func (index *Index) Print() {
 	for key, value := range index.Map {
-		fmt.Printf("key: %s %s\n", key, value.String())
-
+		log.Printf("key: %s %s", key, value.String())
 	}
 }

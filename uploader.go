@@ -50,8 +50,6 @@ var delete_files_on_success bool
 var one_fs_scan_only bool
 var fs_sleep_sec int
 
-var PretendUpload = false
-
 //var maxMemory int64
 var s3bucket string
 
@@ -242,11 +240,9 @@ func getPendingCandidates(max_count int) (candidates []string, err error) {
 	}
 	candidates = []string{}
 	for key, value := range index.Map {
-		//fmt.Printf("key: %s %s\n", key, value.String())
 		if value != Pending {
 			continue
 		}
-
 		candidates = append(candidates, key)
 		if len(candidates) >= max_count {
 			return
@@ -325,7 +321,6 @@ func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 }
 
 func configS3() {
-
 	/*
 		export s3Endpoint=http://minio:9000
 		export s3accessKeyID=minio
@@ -399,7 +394,6 @@ func configS3() {
 		log.Fatalf("session.NewSession failed: %s", err.Error())
 	}
 	svc = s3.New(newSession)
-
 }
 
 func getEnvString(key string, fallback string) string {

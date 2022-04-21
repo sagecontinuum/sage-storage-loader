@@ -94,18 +94,18 @@ func newTempDir(t *testing.T) string {
 
 	items := map[string][]byte{
 		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte(`testing`),
-		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"meta":{"filename":"wow1.txt"}}`),
+		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"meta":{"filename":"wow1.txt"}}`),
 
 		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.6/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte("testing"),
-		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.6/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"meta":{"filename":"wow2.txt"}}`),
+		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.6/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"meta":{"filename":"wow2.txt"}}`),
 
 		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte("testing"),
-		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"meta":{"filename":"wow3.txt"}}`),
+		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"meta":{"filename":"wow3.txt"}}`),
 
 		"node-000048b02d15bc7d/uploads/namespace/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte("testing in namespace"),
-		"node-000048b02d15bc7d/uploads/namespace/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"meta":{"filename":"wow4.txt"}}`),
+		"node-000048b02d15bc7d/uploads/namespace/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"meta":{"filename":"wow4.txt"}}`),
 
-		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/.partial/hello": []byte("you should never see me!"),
+		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/.partial/hello": []byte("!!! you should never see me !!!"),
 	}
 
 	for name, data := range items {

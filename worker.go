@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -121,27 +120,16 @@ func getMetadata(full_dir string) (*MetaData, error) {
 }
 
 func processing(id int, job Job) error {
-	fmt.Printf("Worker %d: processing job %s\n", id, string(job))
+	log.Printf("worker %d processing %s", id, job)
+
 	dir := string(job) // starts with  node-000048b02d...
 	full_dir := filepath.Join(dataDirectory, dir)
-
-	// if !delete_files_on_success {
-	// 	if _, err = os.Stat(flag_file); err == nil {
-	// 		// already exists
-	// 		//fmt.Printf("Worker %d: Flag file found, skipping upload.\n", id)
-	// 		return
-	// 	}
-	// }
 
 	p, err := parseUploadPath(dir)
 	if err != nil {
 		return err
 	}
-
-	//fmt.Printf("Worker %d: got node_id %s\n", id, p.NodeID)
-	//fmt.Printf("Worker %d: got plugin_namespace %s\n", id, p.Namespace)
-	//fmt.Printf("Worker %d: got plugin_name %s\n", id, p.Name)
-	//fmt.Printf("Worker %d: got plugin_version %s\n", id, p.Version)
+	log.Printf("parsed upload info: %+v", p)
 
 	meta, err := getMetadata(full_dir)
 	if err != nil {
@@ -189,28 +177,21 @@ func processing(id int, job Job) error {
 
 	s3path := fmt.Sprintf("%s/%s/%s/%s", rootFolder, jobID, instanceID, p.NodeID)
 
-	fmt.Printf("process %q", s3path)
-
-	return nil
-
-	uploadTarget := "s3"
-
-	if uploadExistsInS3(filepath.Join(s3path, targetNameData)) {
-		fmt.Println("Files already exist in S3")
-		return nil
-	}
-
 	s3metadata := convertMetaToS3Meta(meta)
 
-	if _, err := uploadFile(uploadTarget, s3path, dataFileLocal, targetNameData, s3metadata); err != nil {
+	if _, err := uploadFileToS3(s3path, dataFileLocal, targetNameData, s3metadata); err != nil {
+		log.Printf("upload of data file failed: %s", err.Error())
 		return err
 	}
 
-	if _, err := uploadFile(uploadTarget, s3path, metaFileLocal, targetNameMeta, nil); err != nil {
+	if _, err := uploadFileToS3(s3path, metaFileLocal, targetNameMeta, nil); err != nil {
+		log.Printf("upload of meta file failed: %s", err.Error())
 		return err
 	}
 
 	fmt.Printf("upload success: %s %s (and .meta)\n", s3path, targetNameData)
+
+	return nil
 
 	// *** delete files
 	if delete_files_on_success {
@@ -257,24 +238,4 @@ func uploadExistsInS3(s3key string) bool {
 	}
 	result, err := svc.ListObjectsV2(input)
 	return err == nil && len(result.Contents) == 2
-}
-
-func run_command(cmd_str string, return_stdout bool) (output string, err error) {
-
-	//cmd_str := strings.Join(cmd_array, " ")
-	log.Printf("Command execute: %s", cmd_str)
-
-	//cmd := exec.Command(cmd_array[0], cmd_array[1:len(cmd_array)-1]...)
-	cmd := exec.Command("bash", "-c", cmd_str)
-
-	var output_b []byte
-	output_b, err = cmd.CombinedOutput()
-
-	if err != nil {
-		err = fmt.Errorf("exec.Command failed: %s", err.Error())
-		return
-	}
-	output = string(output_b[:])
-
-	return
 }
