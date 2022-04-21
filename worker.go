@@ -177,20 +177,21 @@ func processing(id int, job Job) error {
 
 	s3path := fmt.Sprintf("%s/%s/%s/%s", rootFolder, jobID, instanceID, p.NodeID)
 
-	s3metadata := convertMetaToS3Meta(meta)
+	up := &MockUploader{}
 
-	if _, err := uploadFileToS3(s3path, dataFileLocal, targetNameData, s3metadata); err != nil {
+	uploadMeta := convertMetaToS3Meta(meta)
+
+	if err := up.UploadFile(dataFileLocal, filepath.Join(s3path, targetNameData), uploadMeta); err != nil {
 		log.Printf("upload of data file failed: %s", err.Error())
 		return err
 	}
 
-	if _, err := uploadFileToS3(s3path, metaFileLocal, targetNameMeta, nil); err != nil {
-		log.Printf("upload of meta file failed: %s", err.Error())
+	if err := up.UploadFile(metaFileLocal, filepath.Join(s3path, targetNameMeta), nil); err != nil {
+		log.Printf("upload of data file failed: %s", err.Error())
 		return err
 	}
 
 	fmt.Printf("upload success: %s %s (and .meta)\n", s3path, targetNameData)
-
 	return nil
 
 	// *** delete files

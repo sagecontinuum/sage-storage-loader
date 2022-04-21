@@ -7,34 +7,13 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
-func computeContentMD5(name string) ([]byte, error) {
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, nil
-	}
-	defer f.Close()
-	h := md5.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
-}
-
-func computeContentBase64MD5(name string) (string, error) {
-	md5, err := computeContentMD5(name)
-	if err != nil {
-		return "", nil
-	}
-	return base64.StdEncoding.EncodeToString(md5), nil
-}
-
 type FileUploader interface {
+	// TODO(sean) is this the right interface? maybe we can more closely match the s3 UploadInput?
 	UploadFile(src, dst string, meta map[string]string) error
 }
 
@@ -46,7 +25,7 @@ func (up *MockUploader) UploadFile(src, dst string, meta map[string]string) erro
 	if up.Error != nil {
 		return up.Error
 	}
-	log.Printf("mock uploading file:\nsrc: %s\ndst: %s\nmeta: %+v", src, dst, meta)
+	log.Printf("would upload file...\nsrc: %s\ndst: %s\nmeta: %+v\n\n", src, dst, meta)
 	// TODO(sean) track results in a list or map to be used in tests
 	return nil
 }
@@ -54,7 +33,6 @@ func (up *MockUploader) UploadFile(src, dst string, meta map[string]string) erro
 type S3Uploader struct{}
 
 func (up *S3Uploader) UploadFile(src, dst string, meta map[string]string) error {
-	// TODO(sean) is this the right interface? maybe we can more closely match the s3 UploadInput?
 	log.Printf("uploading file to s3: %s -> %s", src, dst)
 
 	contentMD5, err := computeContentBase64MD5(src)
@@ -97,13 +75,23 @@ func (up *S3Uploader) UploadFile(src, dst string, meta map[string]string) error 
 	return nil
 }
 
-// prefix is simply the path:  <path>/<targetFilename>
-func uploadFileToS3(prefix string, filename string, targetFilename string, meta map[string]string) (string, error) {
-	dst := filepath.Join(prefix, targetFilename)
+func computeContentBase64MD5(name string) (string, error) {
+	md5, err := computeContentMD5(name)
+	if err != nil {
+		return "", nil
+	}
+	return base64.StdEncoding.EncodeToString(md5), nil
+}
 
-	up := &MockUploader{}
-	// up := &MockUploader{Error: fmt.Errorf("there was a problem uploading the file")}
-
-	// up := &S3Uploader{}
-	return "", up.UploadFile(filename, dst, meta)
+func computeContentMD5(name string) ([]byte, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, nil
+	}
+	defer f.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
