@@ -197,23 +197,6 @@ func processing(id int, job Job) (err error) {
 	meta.Meta["node"] = strings.ToLower(p.NodeID)
 	meta.Meta["plugin"] = p.Namespace + "/" + p.Name + ":" + p.Version
 
-	timestamp := time.Unix(meta.EpochNano/1e9, meta.EpochNano%1e9)
-	//fmt.Printf("Worker %d: got timestamp %s\n", id, timestamp)
-
-	timestamp_date := timestamp.Format("20060201")
-
-	if false {
-		bucket_name := fmt.Sprintf("%s-%s-%s-%s-%s", p.NodeID, p.Namespace, p.Name, p.Version, timestamp_date)
-		log.Printf("bucket_name: %s", bucket_name)
-		bucket_id := ""
-		bucket_id, err = getOrCreateBucket(bucket_name)
-		if err != nil {
-			err = fmt.Errorf("getOrCreateBucket failed: %s", err.Error())
-			return
-		}
-
-		log.Printf("bucket_id: %s", bucket_id)
-	}
 	//bucket_id := ""
 
 	uploadTarget := "s3"

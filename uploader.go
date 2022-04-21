@@ -23,7 +23,6 @@ import (
 )
 
 var index Index
-var bucketMap BucketMap
 
 var dataDirectory string
 
@@ -68,26 +67,28 @@ func readFilesystemLoop(files_dir string, perFileDelay time.Duration) {
 		log.Printf("start readFilesystem again in %d seconds", fs_sleep_sec)
 		time.Sleep(time.Second * time.Duration(fs_sleep_sec))
 	}
-
 }
 
 func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool, perFileDelay time.Duration) error {
 	total_data_files := 0
 	total_datameta_files := 0
 	new_files_count := 0
-	glob_str_no_namespace := filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*", "data")
-	glob_str_correct := filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*", "*", "data") // namespace, name, version, timestamp-sha
+
+	patterns := []string{
+		filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*", "data"),      // uploads without a namespace
+		filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*", "*", "data"), // uploads with a namespace
+	}
 
 	// makes it easier to remove the path prefix later
-	if files_dir[len(files_dir)-1] != '/' {
-		files_dir = files_dir + "/"
+	if !strings.HasSuffix(files_dir, "/") {
+		files_dir += "/"
 	}
 
 	//max_files_add_in_loop := 100
-	for _, glob_str := range []string{glob_str_correct, glob_str_no_namespace} {
-		log.Printf("Searching for files in %s", glob_str)
+	for _, pattern := range patterns {
+		log.Printf("Searching for files in %s", pattern)
 
-		matches, err := filepath.Glob(glob_str)
+		matches, err := filepath.Glob(pattern)
 		if err != nil {
 			return fmt.Errorf("filepath.Glob failed: %s", err.Error())
 		}
@@ -103,7 +104,7 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 				continue
 			}
 
-			if _, err = os.Stat(filepath.Join(dir, "meta")); errors.Is(err, os.ErrNotExist) {
+			if _, err := os.Stat(filepath.Join(dir, "meta")); errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 
@@ -130,7 +131,6 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 					log.Printf("(readFilesystem) new_files_count: %d\n", new_files_count)
 				}
 			}
-
 		}
 	}
 
@@ -313,8 +313,8 @@ func WaitForCtrlC() {
 func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 	c := make(chan struct{})
 	go func() {
-		defer close(c)
 		wg.Wait()
+		close(c)
 	}()
 	select {
 	case <-c:
@@ -504,10 +504,6 @@ func main() {
 	index = Index{}
 	index.Init("UploaderIndex")
 
-	// create bucket map
-	bucketMap = BucketMap{}
-	bucketMap.Init("BucketMap")
-
 	// populate index
 
 	dataDirectory = getEnvString("data_dir", "/data")
@@ -542,7 +538,12 @@ func main() {
 	wg.Add(max_worker_count)
 
 	for i := 0; i < max_worker_count; i++ {
-		worker := &Worker{ID: i, wg: wg, jobQueue: jobQueue, shutdown: shutdown}
+		worker := &Worker{
+			ID:       i,
+			wg:       wg,
+			jobQueue: jobQueue,
+			shutdown: shutdown,
+		}
 		go worker.Run()
 	}
 
@@ -561,7 +562,4 @@ func main() {
 	} else {
 		fmt.Println("All workers finished gracefully. Exit.")
 	}
-
-	os.Exit(0)
-
 }

@@ -250,63 +250,6 @@ func uploadLargeFile(uri, filePath string, chunkSize int, params map[string]stri
 	return
 }
 
-// check bucketMap
-// check if bucket with same name already exists in sage storage
-//   if yes: update bucketMap
-// create bucket if needed
-//   update bucketMap
-func getOrCreateBucket(name string) (bucket_id string, err error) {
-	// try to get existing id from map
-
-	read_lock, err := bucketMap.RLockNamed("getOrCreateBucket")
-	if err != nil {
-		return
-	}
-
-	bucket_id, ok := bucketMap.Map[name]
-	bucketMap.RUnlockNamed(read_lock)
-	if ok {
-		// success
-		return
-	}
-
-	// get write lock
-	err = bucketMap.LockNamed("getOrCreateBucket")
-	if err != nil {
-		err = fmt.Errorf("could not get write lock to bucketMap: %s", err.Error())
-		return
-	}
-	defer bucketMap.Unlock()
-
-	// check again if bucket exists, another worker might have created one in meantime
-	bucket_id, ok = bucketMap.Map[name]
-	if ok {
-		// success
-		return
-	}
-
-	// bucket id is not in cache, check if bucket exists
-	bucket_id, ok, err = getSageBucketByName(name)
-	if err != nil {
-		err = fmt.Errorf("getSageBucketByName: %s", err.Error())
-		return
-	}
-	if ok {
-		return
-	}
-
-	// no existing bucket was found, create new bucket
-	bucket_id, err = createBucket(name)
-	if err != nil {
-		err = fmt.Errorf("createBucket: %s", err.Error())
-		return
-	}
-
-	bucketMap.Map[name] = bucket_id
-
-	return
-}
-
 func getSageBucketByName(bucket_name string) (id string, ok bool, err error) {
 	ok = false
 
