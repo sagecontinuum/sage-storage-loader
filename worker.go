@@ -11,9 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 type Worker struct {
@@ -217,14 +214,4 @@ func convertMetaToS3Meta(meta *MetaData) map[string]string {
 	}
 
 	return s3metadata
-}
-
-func uploadExistsInS3(s3key string) bool {
-	input := &s3.ListObjectsV2Input{
-		Bucket:  aws.String(s3bucket),
-		Prefix:  aws.String(s3key),
-		MaxKeys: aws.Int64(2),
-	}
-	result, err := svc.ListObjectsV2(input)
-	return err == nil && len(result.Contents) == 2
 }

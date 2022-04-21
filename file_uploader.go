@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
@@ -24,11 +25,10 @@ func (up *S3Uploader) UploadFile(src, dst string, meta map[string]string) error 
 		return err
 	}
 
-	// optional - check if file already exists or if content hash matches
-	// if uploadExistsInS3(filepath.Join(s3path, targetNameData)) {
-	// 	fmt.Println("Files already exist in S3")
-	// 	return nil
-	// }
+	// TODO(sean) decided if we want this optional check or not.
+	if uploadExistsInS3(dst) {
+		return nil
+	}
 
 	uploader := s3manager.NewUploader(newSession)
 
@@ -78,4 +78,14 @@ func computeContentMD5(name string) ([]byte, error) {
 		return nil, err
 	}
 	return h.Sum(nil), nil
+}
+
+func uploadExistsInS3(s3key string) bool {
+	input := &s3.ListObjectsV2Input{
+		Bucket:  aws.String(s3bucket),
+		Prefix:  aws.String(s3key),
+		MaxKeys: aws.Int64(2),
+	}
+	result, err := svc.ListObjectsV2(input)
+	return err == nil && len(result.Contents) == 2
 }
