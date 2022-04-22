@@ -39,10 +39,8 @@ func (worker *Worker) Run() {
 
 		if err := worker.Process(job); err != nil {
 			result = fmt.Sprintf("error %s %s", job, err.Error())
-			index.Set(string(job), Failed, "worker") // we can just put an error file in the dir too...
 		} else {
 			result = fmt.Sprintf("ok %s", job)
-			index.Set(string(job), Done, "worker")
 		}
 
 		select {

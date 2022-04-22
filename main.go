@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -20,8 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-var index Index
-
 var dataDirectory string
 
 var newSession *session.Session
@@ -36,154 +33,176 @@ var s3bucket string
 
 const DoneFilename = ".done"
 
-func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool, perFileDelay time.Duration) error {
-	total_data_files := 0
-	total_datameta_files := 0
-	new_files_count := 0
+// func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool, perFileDelay time.Duration) error {
+// 	total_data_files := 0
+// 	total_datameta_files := 0
+// 	new_files_count := 0
 
-	patterns := []string{
-		filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*", "data"),      // uploads without a namespace
-		filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*", "*", "data"), // uploads with a namespace
-	}
+// 	patterns := []string{
+// 		filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*", "data"),      // uploads without a namespace
+// 		filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*", "*", "data"), // uploads with a namespace
+// 	}
 
-	// makes it easier to remove the path prefix later
-	if !strings.HasSuffix(files_dir, "/") {
-		files_dir += "/"
-	}
+// 	// makes it easier to remove the path prefix later
+// 	if !strings.HasSuffix(files_dir, "/") {
+// 		files_dir += "/"
+// 	}
 
-	err := filepath.WalkDir(files_dir, func(path string, d fs.DirEntry, err error) error {
-		for _, pattern := range patterns {
-			ok, err := filepath.Match(pattern, path)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return nil
-			}
+// 	err := filepath.WalkDir(files_dir, func(path string, d fs.DirEntry, err error) error {
+// 		for _, pattern := range patterns {
+// 			ok, err := filepath.Match(pattern, path)
+// 			if err != nil {
+// 				return err
+// 			}
+// 			if !ok {
+// 				return nil
+// 			}
 
-			total_data_files++
+// 			total_data_files++
 
-			dir := filepath.Dir(path)
+// 			dir := filepath.Dir(path)
 
-			// skip if done file exists
-			if _, err := os.Stat(filepath.Join(dir, DoneFilename)); err == nil {
-				return filepath.SkipDir
-			}
+// 			// skip if done file exists
+// 			if _, err := os.Stat(filepath.Join(dir, DoneFilename)); err == nil {
+// 				return filepath.SkipDir
+// 			}
 
-			// skip if meta file doesn't exist
-			if _, err := os.Stat(filepath.Join(dir, "meta")); errors.Is(err, os.ErrNotExist) {
-				return filepath.SkipDir
-			}
+// 			// skip if meta file doesn't exist
+// 			if _, err := os.Stat(filepath.Join(dir, "meta")); errors.Is(err, os.ErrNotExist) {
+// 				return filepath.SkipDir
+// 			}
 
-			total_datameta_files++
+// 			total_datameta_files++
 
-			dir = strings.TrimPrefix(dir, files_dir)
+// 			dir = strings.TrimPrefix(dir, files_dir)
 
-			// slow this down so we do not starve other processes
-			if new_files_count%10 == 0 {
-				time.Sleep(perFileDelay)
-			}
+// 			// slow this down so we do not starve other processes
+// 			if new_files_count%10 == 0 {
+// 				time.Sleep(perFileDelay)
+// 			}
 
-			fileAdded, err := index.Add(dir)
-			if err != nil {
-				return err
-			}
+// 			fileAdded, err := index.Add(dir)
+// 			if err != nil {
+// 				return err
+// 			}
 
-			if fileAdded {
-				new_files_count++
-				if new_files_count < 20 {
-					log.Println("(readFilesystem) added " + dir)
+// 			if fileAdded {
+// 				new_files_count++
+// 				if new_files_count < 20 {
+// 					log.Println("(readFilesystem) added " + dir)
 
-				} else if new_files_count%100 == 0 {
-					log.Printf("(readFilesystem) new_files_count: %d\n", new_files_count)
-				}
-			}
-		}
-		return nil
-	})
+// 				} else if new_files_count%100 == 0 {
+// 					log.Printf("(readFilesystem) new_files_count: %d\n", new_files_count)
+// 				}
+// 			}
+// 		}
+// 		return nil
+// 	})
 
-	if err != nil {
-		return err
-	}
+// 	if err != nil {
+// 		return err
+// 	}
 
-	// TODO(maybe just add a file garbage collector step periodically)
+// 	// TODO(maybe just add a file garbage collector step periodically)
 
-	log.Printf("(readFilesystem) Total files: %d", total_datameta_files)
-	log.Printf("(readFilesystem) New files added: %d", new_files_count)
+// 	log.Printf("(readFilesystem) Total files: %d", total_datameta_files)
+// 	log.Printf("(readFilesystem) New files added: %d", new_files_count)
 
-	// if cleanupDirectories {
-	// 	// timestamp-sha directory should not exist anymore
-	// 	globVersionDirs := filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*")
+// 	// if cleanupDirectories {
+// 	// 	// timestamp-sha directory should not exist anymore
+// 	// 	globVersionDirs := filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*")
 
-	// 	matches, err := filepath.Glob(globVersionDirs)
-	// 	if err != nil {
-	// 		return fmt.Errorf("filepath.Glob failed: %s", err.Error())
-	// 	}
+// 	// 	matches, err := filepath.Glob(globVersionDirs)
+// 	// 	if err != nil {
+// 	// 		return fmt.Errorf("filepath.Glob failed: %s", err.Error())
+// 	// 	}
 
-	// 	now := time.Now()
+// 	// 	now := time.Now()
 
-	// 	threeDaysAgo := now.AddDate(0, 0, -3)
+// 	// 	threeDaysAgo := now.AddDate(0, 0, -3)
 
-	// 	for _, dir := range matches {
-	// 		log.Printf("got: %s", dir)
-	// 		//dir := filepath.Dir(m)
-	// 		var finfo fs.FileInfo
-	// 		finfo, err = os.Stat(dir)
-	// 		if err != nil {
-	// 			err = nil
-	// 			continue
-	// 		}
-	// 		if !finfo.IsDir() {
-	// 			// not a directory
-	// 			continue
-	// 		}
-	// 		if finfo.ModTime().After(threeDaysAgo) {
-	// 			// not old enough
-	// 			//log.Printf("not old enough")
-	// 			continue
-	// 		}
-	// 		var isEmpty bool
-	// 		isEmpty, err = IsDirectoryEmpty(dir)
-	// 		if err != nil {
-	// 			//log.Printf("some error")
-	// 			//err = nil
-	// 			continue
-	// 		}
-	// 		if !isEmpty {
-	// 			//log.Printf("not empty")
-	// 			continue
-	// 		}
+// 	// 	for _, dir := range matches {
+// 	// 		log.Printf("got: %s", dir)
+// 	// 		//dir := filepath.Dir(m)
+// 	// 		var finfo fs.FileInfo
+// 	// 		finfo, err = os.Stat(dir)
+// 	// 		if err != nil {
+// 	// 			err = nil
+// 	// 			continue
+// 	// 		}
+// 	// 		if !finfo.IsDir() {
+// 	// 			// not a directory
+// 	// 			continue
+// 	// 		}
+// 	// 		if finfo.ModTime().After(threeDaysAgo) {
+// 	// 			// not old enough
+// 	// 			//log.Printf("not old enough")
+// 	// 			continue
+// 	// 		}
+// 	// 		var isEmpty bool
+// 	// 		isEmpty, err = IsDirectoryEmpty(dir)
+// 	// 		if err != nil {
+// 	// 			//log.Printf("some error")
+// 	// 			//err = nil
+// 	// 			continue
+// 	// 		}
+// 	// 		if !isEmpty {
+// 	// 			//log.Printf("not empty")
+// 	// 			continue
+// 	// 		}
 
-	// 		err = os.Remove(dir)
-	// 		if err != nil {
-	// 			log.Printf("Could not remove old and empty directory: %s", err.Error())
-	// 			continue
-	// 		}
-	// 		log.Printf("deleted directory: %s", dir)
-	// 	}
-	// }
+// 	// 		err = os.Remove(dir)
+// 	// 		if err != nil {
+// 	// 			log.Printf("Could not remove old and empty directory: %s", err.Error())
+// 	// 			continue
+// 	// 		}
+// 	// 		log.Printf("deleted directory: %s", dir)
+// 	// 	}
+// 	// }
 
-	// // this removes "Done" enries from the index
-	// if cleanupDone && delete_files_on_success {
-	// 	toBeRemoved, err := index.GetList(Done)
-	// 	if err != nil {
-	// 		return fmt.Errorf("could not not get list of done jobs: %s", err.Error())
-	// 	}
+// 	// // this removes "Done" enries from the index
+// 	// if cleanupDone && delete_files_on_success {
+// 	// 	toBeRemoved, err := index.GetList(Done)
+// 	// 	if err != nil {
+// 	// 		return fmt.Errorf("could not not get list of done jobs: %s", err.Error())
+// 	// 	}
 
-	// 	log.Printf("trying to remove %d jobs from map", len(toBeRemoved))
-	// 	count := 0
-	// 	for _, job := range toBeRemoved {
-	// 		if err := index.Remove(job, "cleanupDone"); err != nil {
-	// 			return fmt.Errorf("could remove job from map: %s", err.Error())
-	// 		}
-	// 		//delete(index.Map, job)
-	// 		count++
-	// 	}
-	// 	log.Printf("%d jobs removed from map", count)
-	// }
+// 	// 	log.Printf("trying to remove %d jobs from map", len(toBeRemoved))
+// 	// 	count := 0
+// 	// 	for _, job := range toBeRemoved {
+// 	// 		if err := index.Remove(job, "cleanupDone"); err != nil {
+// 	// 			return fmt.Errorf("could remove job from map: %s", err.Error())
+// 	// 		}
+// 	// 		//delete(index.Map, job)
+// 	// 		count++
+// 	// 	}
+// 	// 	log.Printf("%d jobs removed from map", count)
+// 	// }
 
-	return nil
-}
+// 	return nil
+// }
+
+// // source: https://stackoverflow.com/a/30708914/2069181
+// func IsDirectoryEmpty(name string) (bool, error) {
+// 	myfile, err := os.Open(name)
+// 	if err != nil {
+// 		return false, err
+// 	}
+// 	defer myfile.Close()
+
+// 	var files []string
+// 	files, err = myfile.Readdirnames(1) // Or f.Readdir(1)
+
+// 	for _, v := range files {
+// 		log.Printf("name: %s", name)
+// 		log.Printf("content: %s", v)
+// 	}
+
+// 	if err == io.EOF {
+// 		return true, nil
+// 	}
+// 	return false, err // Either not empty or error, suits both cases
+// }
 
 func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 	patterns := []string{
@@ -238,28 +257,6 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 	})
 
 	// TODO(maybe just add a file garbage collector step periodically)
-}
-
-// source: https://stackoverflow.com/a/30708914/2069181
-func IsDirectoryEmpty(name string) (bool, error) {
-	myfile, err := os.Open(name)
-	if err != nil {
-		return false, err
-	}
-	defer myfile.Close()
-
-	var files []string
-	files, err = myfile.Readdirnames(1) // Or f.Readdir(1)
-
-	for _, v := range files {
-		log.Printf("name: %s", name)
-		log.Printf("content: %s", v)
-	}
-
-	if err == io.EOF {
-		return true, nil
-	}
-	return false, err // Either not empty or error, suits both cases
 }
 
 func fillJobQueue(stop <-chan struct{}, candidateArrayLen int) (<-chan Job, <-chan error) {
@@ -418,17 +415,8 @@ func main() {
 	delete_files_on_success = getEnvBool("delete_files_on_success", false)
 	one_fs_scan_only = getEnvBool("one_fs_scan_only", false)
 
-	// create index
-	index = Index{}
-	index.Init("UploaderIndex")
-
-	// populate index
-
 	// dataDirectory = getEnvString("data_dir", "/data")
 	dataDirectory = getEnvString("data_dir", "test-data")
-
-	// readFilesystem(dataDirectory, delete_files_on_success, delete_files_on_success, 0)
-	// log.Printf("Initial readFilesystem done.")
 
 	stop := make(chan struct{})
 
