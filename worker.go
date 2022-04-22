@@ -135,7 +135,7 @@ func (w *Worker) Process(job Job) error {
 		return fmt.Errorf("label field filename is empty")
 	}
 
-	// add info extracted from path
+	// Add info extracted from path.
 	meta.Meta["node"] = strings.ToLower(p.NodeID)
 	meta.Meta["plugin"] = p.Namespace + "/" + p.Name + ":" + p.Version
 
@@ -163,15 +163,30 @@ func (w *Worker) Process(job Job) error {
 	}
 
 	if w.DeleteFilesOnSuccess {
-		// clean up data, meta, done files and then parent dir
-		for _, name := range []string{dataFileLocal, metaFileLocal, doneFileLocal, filepath.Dir(dataFileLocal)} {
+		// Clean up data, meta and done files.
+		for _, name := range []string{dataFileLocal, metaFileLocal, doneFileLocal} {
 			if err := os.Remove(name); err != nil {
 				return fmt.Errorf("failed to clean up %s", name)
 			}
 		}
-	}
 
-	// we don't want to remove parents yet... we'll clean those up later based on age...
+		// Attempt to clean up parent directories up to root/node-xyz/uploads.
+		//
+		// NOTE(sean) There is a possible race condition with the upload agent here.
+		//
+		// It's possible that the upload agent creates the parent paths which are removed
+		// before we can upload. In this case, that particular rsync will fail and then
+		// will be tried again later.
+		//
+		// In order for this to happen, the OSN loader would have to upload and clean up the
+		// last staged item for a task right when that task is posting a new upload. This seems
+		// potentially rare enough that I'd opt for simpler, more robust cleanup logic for now.
+		for p := filepath.Dir(dataFileLocal); filepath.Base(p) != "uploads"; p = filepath.Dir(p) {
+			if err := os.Remove(p); err != nil {
+				break
+			}
+		}
+	}
 
 	return nil
 }
