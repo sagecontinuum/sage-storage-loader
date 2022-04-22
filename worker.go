@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type Worker struct {
@@ -18,7 +17,6 @@ type Worker struct {
 	Uploader             FileUploader
 	DeleteFilesOnSuccess bool
 	jobQueue             <-chan Job
-	shutdown             <-chan struct{}
 }
 
 type MetaData struct {
@@ -36,34 +34,18 @@ var sage_storage_token = "user:test"
 var sage_storage_username = "test"
 
 func (worker *Worker) Run() {
-	fmt.Printf("Worker %d starting\n", worker.ID)
+	log.Printf("worker %d starting", worker.ID)
 
-FOR:
-	for {
-		// by splitting this into two selects, is is guaranteed that the broadcast is not skipped
-		select {
-		case <-worker.shutdown:
-			fmt.Printf("Worker %d received shutdown signal.\n", worker.ID)
-			break FOR
-		default:
-		}
-
-		select {
-		case job := <-worker.jobQueue:
-			err := worker.Process(job)
-			if err != nil {
-				log.Printf("Somthing went wrong: %s", err.Error())
-				index.Set(string(job), Failed, "worker")
-				err = nil
-			} else {
-				index.Set(string(job), Done, "worker")
-			}
-		default:
-			// there is no work, slow down..
-			time.Sleep(time.Second)
+	for job := range worker.jobQueue {
+		if err := worker.Process(job); err != nil {
+			log.Printf("worker %d error: %s", worker.ID, err.Error())
+			index.Set(string(job), Failed, "worker")
+		} else {
+			index.Set(string(job), Done, "worker")
 		}
 	}
-	fmt.Printf("Worker %d stopping.\n", worker.ID)
+
+	log.Printf("worker %d stopped.\n", worker.ID)
 }
 
 type pInfo struct {

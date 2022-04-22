@@ -484,7 +484,6 @@ func main() {
 				DeleteFilesOnSuccess: delete_files_on_success,
 				Uploader:             uploader,
 				jobQueue:             jobQueue,
-				shutdown:             shutdown,
 			}
 			worker.Run()
 		}(i)
@@ -496,9 +495,8 @@ func main() {
 	WaitForCtrlC()
 	fmt.Printf("\n")
 
-	close(jobQueue)
-	fmt.Println("jobQueue closed")
 	close(shutdown)
+	close(jobQueue)
 
 	if waitTimeout(wg, time.Second*10) {
 		fmt.Println("Timed out waiting for workers. Exit Anyway.")
