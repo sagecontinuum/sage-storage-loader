@@ -28,13 +28,10 @@ func TestWorkerProcess(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
-			dataDirectory = newTempDir(t)
-
-			// ah... just write the files here...
-
 			uploader := NewMockUploader()
 
 			w := &Worker{
+				DataRoot: newTempDir(t),
 				Uploader: uploader,
 			}
 
@@ -42,11 +39,11 @@ func TestWorkerProcess(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !uploader.WasUploaded(filepath.Join(dataDirectory, tc.srcDir, "data"), tc.dst) {
+			if !uploader.WasUploaded(filepath.Join(w.DataRoot, tc.srcDir, "data"), tc.dst) {
 				t.Fatalf("missing upload\nsrc: %s\ndst: %s\n\n%v", tc.srcDir, tc.dst, uploader.uploads)
 			}
 
-			if !uploader.WasUploaded(filepath.Join(dataDirectory, tc.srcDir, "meta"), tc.dst+".meta") {
+			if !uploader.WasUploaded(filepath.Join(w.DataRoot, tc.srcDir, "meta"), tc.dst+".meta") {
 				t.Fatalf("missing upload\nsrc: %s\ndst: %s", tc.srcDir, tc.dst)
 			}
 		})

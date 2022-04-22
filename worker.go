@@ -11,6 +11,7 @@ import (
 )
 
 type Worker struct {
+	DataRoot             string
 	Skipped              int64
 	Uploader             FileUploader
 	DeleteFilesOnSuccess bool
@@ -97,7 +98,7 @@ func getMetadata(full_dir string) (*MetaData, error) {
 
 func (w *Worker) Process(job Job) error {
 	dir := string(job) // starts with  node-000048b02d...
-	full_dir := filepath.Join(dataDirectory, dir)
+	full_dir := filepath.Join(w.DataRoot, dir)
 
 	p, err := parseUploadPath(dir)
 	if err != nil {

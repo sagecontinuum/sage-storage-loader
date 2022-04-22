@@ -19,14 +19,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-var dataDirectory string
-
 var newSession *session.Session
 var svc *s3.S3
 
 var delete_files_on_success bool
-var one_fs_scan_only bool
-var fs_sleep_sec int
 
 //var maxMemory int64
 var s3bucket string
@@ -259,7 +255,7 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 	// TODO(maybe just add a file garbage collector step periodically)
 }
 
-func fillJobQueue(stop <-chan struct{}, candidateArrayLen int) (<-chan Job, <-chan error) {
+func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) {
 	jobs := make(chan Job)
 	errc := make(chan error, 1)
 
@@ -267,7 +263,7 @@ func fillJobQueue(stop <-chan struct{}, candidateArrayLen int) (<-chan Job, <-ch
 		defer close(jobs)
 		for {
 			log.Printf("scanning for jobs...")
-			if err := scanForJobs(stop, jobs, dataDirectory); err != nil {
+			if err := scanForJobs(stop, jobs, root); err != nil {
 				errc <- err
 				return
 			}
@@ -402,21 +398,13 @@ func main() {
 	}
 
 	numWorkers := getEnvInt("workers", 1) // 10 suggested for production
-	queue_size := 50                      // 50 suggested for production
-	candiateArrayLen := 100               // 100 suggested for production
 
-	fs_sleep_sec = getEnvInt("fs_sleep_sec", 3)
-
-	fmt.Println("SAGE Uploader")
-
-	log.Printf("numWorkers: %d", numWorkers)
-	log.Printf("queue_size: %d", queue_size)
+	log.Println("SAGE Uploader")
 
 	delete_files_on_success = getEnvBool("delete_files_on_success", false)
-	one_fs_scan_only = getEnvBool("one_fs_scan_only", false)
 
-	// dataDirectory = getEnvString("data_dir", "/data")
-	dataDirectory = getEnvString("data_dir", "test-data")
+	// dataRoot := getEnvString("data_dir", "/data")
+	dataRoot := getEnvString("data_dir", "test-data")
 
 	stop := make(chan struct{})
 
@@ -428,7 +416,7 @@ func main() {
 		close(stop)
 	}()
 
-	jobs, errc := fillJobQueue(stop, candiateArrayLen)
+	jobs, errc := fillJobQueue(stop, dataRoot)
 
 	results := make(chan string)
 
