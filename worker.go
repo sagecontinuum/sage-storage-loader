@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -18,7 +17,6 @@ type Worker struct {
 	Skipped              int64
 	Uploader             FileUploader
 	DeleteFilesOnSuccess bool
-	wg                   *sync.WaitGroup
 	jobQueue             <-chan Job
 	shutdown             <-chan struct{}
 }
@@ -38,7 +36,6 @@ var sage_storage_token = "user:test"
 var sage_storage_username = "test"
 
 func (worker *Worker) Run() {
-	defer worker.wg.Done()
 	fmt.Printf("Worker %d starting\n", worker.ID)
 
 FOR:

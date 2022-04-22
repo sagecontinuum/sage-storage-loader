@@ -477,15 +477,17 @@ func main() {
 	wg.Add(max_worker_count)
 
 	for i := 0; i < max_worker_count; i++ {
-		worker := &Worker{
-			ID:                   i,
-			DeleteFilesOnSuccess: delete_files_on_success,
-			Uploader:             uploader,
-			wg:                   wg,
-			jobQueue:             jobQueue,
-			shutdown:             shutdown,
-		}
-		go worker.Run()
+		go func(ID int) {
+			defer wg.Done()
+			worker := &Worker{
+				ID:                   ID,
+				DeleteFilesOnSuccess: delete_files_on_success,
+				Uploader:             uploader,
+				jobQueue:             jobQueue,
+				shutdown:             shutdown,
+			}
+			worker.Run()
+		}(i)
 	}
 
 	time.Sleep(time.Second)
