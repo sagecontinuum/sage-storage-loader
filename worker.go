@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+type Job string
+
 type Worker struct {
 	DataRoot             string
 	Skipped              int64
