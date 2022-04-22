@@ -162,8 +162,7 @@ func (w *Worker) Process(job Job) error {
 	metaFileLocal := filepath.Join(full_dir, "meta")
 
 	rootFolder := "node-data"
-	instanceID := p.Name + "-" + p.Version
-	s3path := fmt.Sprintf("%s/%s/%s/%s", rootFolder, p.Namespace, instanceID, p.NodeID)
+	s3path := fmt.Sprintf("%s/%s/sage-%s-%s/%s", rootFolder, p.Namespace, p.Name, p.Version, p.NodeID)
 
 	uploadMeta := convertMetaToS3Meta(meta)
 
