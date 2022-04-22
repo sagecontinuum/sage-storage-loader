@@ -158,20 +158,14 @@ func (w *Worker) Process(job Job) error {
 		return err
 	}
 
-	// *** delete files
+	if err := os.WriteFile(filepath.Join(full_dir, DoneFilename), []byte{}, 0o644); err != nil {
+		return fmt.Errorf("could not create flag file: %s", err.Error())
+	}
+
 	if w.DeleteFilesOnSuccess {
 		if err := os.RemoveAll(full_dir); err != nil {
 			return fmt.Errorf("can not delete directory (%s): %s", full_dir, err.Error())
 		}
-	} else {
-		flag_file := filepath.Join(full_dir, DoneFilename)
-
-		var emptyFlagFile *os.File
-		emptyFlagFile, err = os.Create(flag_file)
-		if err != nil {
-			return fmt.Errorf("could not create flag file: %s", err.Error())
-		}
-		emptyFlagFile.Close()
 	}
 
 	return nil

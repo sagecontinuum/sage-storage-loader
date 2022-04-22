@@ -427,6 +427,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			worker := &Worker{
+				DataRoot:             dataRoot,
 				DeleteFilesOnSuccess: delete_files_on_success,
 				Uploader:             uploader,
 				Jobs:                 jobs,
