@@ -53,9 +53,15 @@ def add_random_item(data_dir):
     meta["labels"]["filename"] = random_filename()
 
     dir = Path(data_dir, f"node-{random_node_id()}/uploads/{random_task_name()}/{random_version()}/{timestamp}-{shasum}")
-    dir.mkdir(parents=True, exist_ok=True)
-    Path(dir, "data").write_bytes(data)
-    Path(dir, "meta").write_text(json.dumps(meta, separators=(",", ":")))
+    Path(dir, ".partial").mkdir(parents=True, exist_ok=True)
+    
+    Path(dir, ".partial", "data").write_bytes(data)
+    Path(dir, ".partial", "meta").write_text(json.dumps(meta, separators=(",", ":")))
+
+    Path(dir, ".partial", "data").rename(Path(dir, "data"))
+    Path(dir, ".partial", "meta").rename(Path(dir, "meta"))
+    Path(dir, ".partial").rmdir()
+
 
 
 def main():
