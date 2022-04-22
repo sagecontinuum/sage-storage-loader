@@ -35,7 +35,6 @@ func TestWorkerProcess(t *testing.T) {
 			uploader := NewMockUploader()
 
 			w := &Worker{
-				ID:       123,
 				Uploader: uploader,
 			}
 

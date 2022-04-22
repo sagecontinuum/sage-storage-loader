@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,11 +11,12 @@ import (
 )
 
 type Worker struct {
-	ID                   int
 	Skipped              int64
 	Uploader             FileUploader
 	DeleteFilesOnSuccess bool
-	jobQueue             <-chan Job
+	Jobs                 <-chan Job
+	Results              chan<- string
+	Stop                 <-chan struct{}
 }
 
 type MetaData struct {
@@ -34,18 +34,23 @@ var sage_storage_token = "user:test"
 var sage_storage_username = "test"
 
 func (worker *Worker) Run() {
-	log.Printf("worker %d starting", worker.ID)
+	for job := range worker.Jobs {
+		var result string
 
-	for job := range worker.jobQueue {
 		if err := worker.Process(job); err != nil {
-			log.Printf("worker %d error: %s", worker.ID, err.Error())
-			index.Set(string(job), Failed, "worker")
+			result = fmt.Sprintf("error %s %s", job, err.Error())
+			index.Set(string(job), Failed, "worker") // we can just put an error file in the dir too...
 		} else {
+			result = fmt.Sprintf("ok %s", job)
 			index.Set(string(job), Done, "worker")
 		}
-	}
 
-	log.Printf("worker %d stopped.\n", worker.ID)
+		select {
+		case worker.Results <- result:
+		case <-worker.Stop:
+			return
+		}
+	}
 }
 
 type pInfo struct {
@@ -160,7 +165,7 @@ func (w *Worker) Process(job Job) error {
 			return fmt.Errorf("can not delete directory (%s): %s", full_dir, err.Error())
 		}
 	} else {
-		flag_file := filepath.Join(full_dir, "done")
+		flag_file := filepath.Join(full_dir, DoneFilename)
 
 		var emptyFlagFile *os.File
 		emptyFlagFile, err = os.Create(flag_file)

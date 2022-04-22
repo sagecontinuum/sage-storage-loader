@@ -12,14 +12,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/streadway/amqp"
 )
 
 var index Index
@@ -29,27 +27,14 @@ var dataDirectory string
 var newSession *session.Session
 var svc *s3.S3
 
-var amqp_con *amqp.Connection
-var amqp_chan *amqp.Channel
-var notifyCloseChannel chan *amqp.Error
-
-var rabbitmq_host string
-var rabbitmq_port string
-var rabbitmq_user string
-var rabbitmq_password string
-var rabbitmq_exchange string
-var rabbitmq_queue string
-var rabbitmq_routingkey string
-
-var rabbitmq_cacert_file string
-var rabbitmq_cert_file string
-var rabbitmq_key_file string
 var delete_files_on_success bool
 var one_fs_scan_only bool
 var fs_sleep_sec int
 
 //var maxMemory int64
 var s3bucket string
+
+const DoneFilename = ".done"
 
 func readFilesystemLoop(files_dir string, perFileDelay time.Duration) {
 	count := 0
@@ -96,7 +81,7 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 			//}
 			dir := filepath.Dir(m)
 
-			if _, err := os.Stat(filepath.Join(dir, "done")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, DoneFilename)); err == nil {
 				continue
 			}
 
@@ -250,72 +235,42 @@ func getPendingCandidates(max_count int) (candidates []string, err error) {
 	return
 }
 
-// TODO also clean here ?
-// TODO lock index and sleep for 3 seconds before cleanup, to give filesystem time to remove files
-func fillQueue(candidateArrayLen int, jobQueue chan Job) (err error) {
+func fillJobQueue(stop <-chan struct{}, candidateArrayLen int) (<-chan Job, <-chan error) {
+	jobs := make(chan Job)
+	errc := make(chan error, 1)
 
-	var candidates []string
-	candidates, err = getPendingCandidates(candidateArrayLen)
-	if err != nil {
-		err = fmt.Errorf("getPendingCandidates failed: %s", err.Error())
-		return
-	}
+	go func() {
+		defer close(jobs)
+		for {
+			candidates, err := getPendingCandidates(candidateArrayLen)
+			if err != nil {
+				errc <- fmt.Errorf("getPendingCandidates failed: %s", err.Error())
+				return
+			}
 
-	if len(candidates) == 0 {
-		time.Sleep(3 * time.Second)
-		return
-	}
+			for _, cand := range candidates {
+				select {
+				case jobs <- Job(cand):
+					index.Set(cand, Active, "fillQueue")
+				case <-stop:
+					errc <- nil
+					return
+				}
+			}
 
-	//if we collected candidates, push into queue and update state
-	count := 0
-	for _, cand := range candidates {
-		jobQueue <- Job(cand) // this is and should be blocking
-		index.Set(cand, Active, "fillQueue")
-		count++
-	}
-	log.Printf("%d jobs put in queue.", count)
-	return
-}
+			// NOTE(sean) eventually will not need this, this will be integrated into file scan
+			select {
+			case <-stop:
+				errc <- nil
+				return
+			default:
+			}
 
-func fillQueueLoop(candidateArrayLen int, jobQueue chan Job) {
-	for {
-		err := fillQueue(candidateArrayLen, jobQueue)
-		if err != nil {
-			log.Fatalf("fillQueue failed: %s", err.Error())
+			time.Sleep(3 * time.Second)
 		}
-	}
-}
-
-func WaitForCtrlC() {
-	var end_waiter sync.WaitGroup
-	end_waiter.Add(1)
-	//var signal_channel chan os.Signal
-	var signal_channel = make(chan os.Signal, 1)
-	signal.Notify(signal_channel, os.Interrupt,
-		syscall.SIGHUP,
-		syscall.SIGINT,
-		syscall.SIGTERM, // SIGTERM 15 Terminate a process gracefully
-		syscall.SIGQUIT,
-	)
-	go func() {
-		<-signal_channel
-		end_waiter.Done()
 	}()
-	end_waiter.Wait()
-}
 
-func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
-	c := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(c)
-	}()
-	select {
-	case <-c:
-		return false // completed normally
-	case <-time.After(timeout):
-		return true // timed out
-	}
+	return jobs, errc
 }
 
 func configS3() {
@@ -435,23 +390,19 @@ func main() {
 		uploader = &TestUploader{}
 	}
 
-	max_worker_count := getEnvInt("workers", 1) // 10 suggested for production
-	queue_size := 50                            // 50 suggested for production
-	candiateArrayLen := 100                     // 100 suggested for production
+	numWorkers := getEnvInt("workers", 1) // 10 suggested for production
+	queue_size := 50                      // 50 suggested for production
+	candiateArrayLen := 100               // 100 suggested for production
 
 	fs_sleep_sec = getEnvInt("fs_sleep_sec", 3)
 
 	fmt.Println("SAGE Uploader")
 
-	log.Printf("max_worker_count: %d", max_worker_count)
+	log.Printf("numWorkers: %d", numWorkers)
 	log.Printf("queue_size: %d", queue_size)
 
 	delete_files_on_success = getEnvBool("delete_files_on_success", false)
 	one_fs_scan_only = getEnvBool("one_fs_scan_only", false)
-
-	// create channels
-	jobQueue := make(chan Job, queue_size)
-	shutdown := make(chan struct{})
 
 	// create index
 	index = Index{}
@@ -469,38 +420,45 @@ func main() {
 		go readFilesystemLoop(dataDirectory, 100*time.Millisecond)
 	}
 
-	// this process feeds workers with work
-	go fillQueueLoop(candiateArrayLen, jobQueue)
+	stop := make(chan struct{})
 
-	// start upload workers
-	wg := new(sync.WaitGroup)
-	wg.Add(max_worker_count)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	go func() {
+		<-sig
+		close(stop)
+		log.Printf("signal to close")
+	}()
 
-	for i := 0; i < max_worker_count; i++ {
-		go func(ID int) {
+	jobs, _ := fillJobQueue(stop, candiateArrayLen)
+
+	results := make(chan string)
+
+	var wg sync.WaitGroup
+	wg.Add(numWorkers)
+
+	for i := 0; i < numWorkers; i++ {
+		go func() {
 			defer wg.Done()
 			worker := &Worker{
-				ID:                   ID,
 				DeleteFilesOnSuccess: delete_files_on_success,
 				Uploader:             uploader,
-				jobQueue:             jobQueue,
+				Jobs:                 jobs,
+				Results:              results,
+				Stop:                 stop,
 			}
 			worker.Run()
-		}(i)
+		}()
 	}
 
-	time.Sleep(time.Second)
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 
-	fmt.Printf("Press Ctrl+C to end  (This will give workers 10 seconds to complete)\n")
-	WaitForCtrlC()
-	fmt.Printf("\n")
-
-	close(shutdown)
-	close(jobQueue)
-
-	if waitTimeout(wg, time.Second*10) {
-		fmt.Println("Timed out waiting for workers. Exit Anyway.")
-	} else {
-		fmt.Println("All workers finished gracefully. Exit.")
+	for r := range results {
+		log.Printf("processed %s", r)
 	}
+
+	log.Printf("bye!")
 }
