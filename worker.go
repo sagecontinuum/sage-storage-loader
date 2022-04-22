@@ -14,12 +14,13 @@ import (
 )
 
 type Worker struct {
-	ID       int
-	Skipped  int64
-	Uploader FileUploader
-	wg       *sync.WaitGroup
-	jobQueue <-chan Job
-	shutdown <-chan int
+	ID                   int
+	Skipped              int64
+	Uploader             FileUploader
+	DeleteFilesOnSuccess bool
+	wg                   *sync.WaitGroup
+	jobQueue             <-chan Job
+	shutdown             <-chan struct{}
 }
 
 type MetaData struct {
@@ -174,10 +175,8 @@ func (w *Worker) Process(job Job) error {
 		return err
 	}
 
-	return nil
-
 	// *** delete files
-	if delete_files_on_success {
+	if w.DeleteFilesOnSuccess {
 		if err := os.RemoveAll(full_dir); err != nil {
 			return fmt.Errorf("can not delete directory (%s): %s", full_dir, err.Error())
 		}

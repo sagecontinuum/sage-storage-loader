@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -88,4 +89,11 @@ func uploadExistsInS3(s3key string) bool {
 	}
 	result, err := svc.ListObjectsV2(input)
 	return err == nil && len(result.Contents) == 2
+}
+
+type TestUploader struct{}
+
+func (up *TestUploader) UploadFile(src, dst string, meta map[string]string) error {
+	log.Printf("would upload file\nsrc: %s\ndst: %s\nmeta: %+v\n\n", src, dst, meta)
+	return nil
 }

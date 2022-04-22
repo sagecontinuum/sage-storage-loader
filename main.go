@@ -44,8 +44,6 @@ var rabbitmq_routingkey string
 var rabbitmq_cacert_file string
 var rabbitmq_cert_file string
 var rabbitmq_key_file string
-
-var send_rmq_message bool
 var delete_files_on_success bool
 var one_fs_scan_only bool
 var fs_sleep_sec int
@@ -427,10 +425,14 @@ func getEnvBool(key string, fallback bool) bool {
 
 func main() {
 	// TODO: add garbage collection/notifier if old files are not moved away
-	useS3 := true
+	useS3 := false
+
+	var uploader FileUploader
 
 	if useS3 {
 		configS3()
+	} else {
+		uploader = &TestUploader{}
 	}
 
 	max_worker_count := getEnvInt("workers", 1) // 10 suggested for production
@@ -444,55 +446,12 @@ func main() {
 	log.Printf("max_worker_count: %d", max_worker_count)
 	log.Printf("queue_size: %d", queue_size)
 
-	send_rmq_message = getEnvBool("send_rmq_message", false)
-
-	if send_rmq_message {
-		rabbitmq_host = os.Getenv("rabbitmq_host")
-		rabbitmq_port = os.Getenv("rabbitmq_port")
-		rabbitmq_user = os.Getenv("rabbitmq_user")
-		rabbitmq_password = os.Getenv("rabbitmq_password")
-		rabbitmq_exchange = os.Getenv("rabbitmq_exchange")
-		rabbitmq_queue = os.Getenv("rabbitmq_queue")
-		rabbitmq_routingkey = os.Getenv("rabbitmq_routingkey")
-
-		rabbitmq_cacert_file = os.Getenv("rabbitmq_cacert_file")
-		rabbitmq_cert_file = os.Getenv("rabbitmq_cert_file")
-		rabbitmq_key_file = os.Getenv("rabbitmq_key_file")
-
-		if rabbitmq_host == "" {
-			log.Fatalf("rabbitmq_host not defined")
-			return
-		}
-
-		if rabbitmq_port == "" {
-			log.Fatalf("rabbitmq_port not defined")
-			return
-		}
-
-		if rabbitmq_cert_file == "" {
-			if rabbitmq_user == "" {
-				log.Fatalf("provide rabbitmq_cert_file or rabbitmq_user")
-				return
-			}
-			if rabbitmq_password == "" {
-				log.Fatalf("provide rabbitmq_cert_file or rabbitmq_password")
-				return
-			}
-		}
-		log.Printf("rabbitmq_host: %s", rabbitmq_host)
-		log.Printf("rabbitmq_port: %s", rabbitmq_port)
-		log.Printf("rabbitmq_user: %s", rabbitmq_user)
-		log.Printf("rabbitmq_exchange: %s", rabbitmq_exchange)
-		log.Printf("rabbitmq_queue: %s", rabbitmq_queue)
-		log.Printf("rabbitmq_routingkey: %s", rabbitmq_routingkey)
-	}
-
 	delete_files_on_success = getEnvBool("delete_files_on_success", false)
 	one_fs_scan_only = getEnvBool("one_fs_scan_only", false)
 
 	// create channels
 	jobQueue := make(chan Job, queue_size)
-	shutdown := make(chan int)
+	shutdown := make(chan struct{})
 
 	// create index
 	index = Index{}
@@ -500,28 +459,14 @@ func main() {
 
 	// populate index
 
-	dataDirectory = getEnvString("data_dir", "/data")
+	// dataDirectory = getEnvString("data_dir", "/data")
+	dataDirectory = getEnvString("data_dir", "test-data")
 
 	readFilesystem(dataDirectory, delete_files_on_success, delete_files_on_success, 0)
 	log.Printf("Initial readFilesystem done.")
 
 	if !one_fs_scan_only {
 		go readFilesystemLoop(dataDirectory, 100*time.Millisecond)
-	}
-	// debug output
-	//index.Print()
-	if send_rmq_message {
-		go amqp_connection_loop()
-
-		counter := 0
-		for amqp_chan == nil {
-			counter++
-			if counter >= 10 {
-				log.Fatal("Did not get RMQ connection. Exit")
-			}
-			log.Printf("waiting for RMQ connection...")
-			time.Sleep(3 * time.Second)
-		}
 	}
 
 	// this process feeds workers with work
@@ -533,10 +478,12 @@ func main() {
 
 	for i := 0; i < max_worker_count; i++ {
 		worker := &Worker{
-			ID:       i,
-			wg:       wg,
-			jobQueue: jobQueue,
-			shutdown: shutdown,
+			ID:                   i,
+			DeleteFilesOnSuccess: delete_files_on_success,
+			Uploader:             uploader,
+			wg:                   wg,
+			jobQueue:             jobQueue,
+			shutdown:             shutdown,
 		}
 		go worker.Run()
 	}
