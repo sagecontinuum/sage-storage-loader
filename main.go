@@ -229,7 +229,6 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 
 			select {
 			case jobs <- Job(dir):
-				fmt.Printf("*** add %s", dir)
 			case <-stop:
 				return fmt.Errorf("walk stopped")
 			}
@@ -441,7 +440,7 @@ func main() {
 		close(stop)
 	}()
 
-	jobs, _ := fillJobQueue(stop, candiateArrayLen)
+	jobs, errc := fillJobQueue(stop, candiateArrayLen)
 
 	results := make(chan string)
 
@@ -471,5 +470,11 @@ func main() {
 		log.Printf("processed %s", r)
 	}
 
-	log.Printf("bye!")
+	select {
+	case err := <-errc:
+		if err != nil {
+			log.Printf("error: %s", err.Error())
+		}
+	default:
+	}
 }
