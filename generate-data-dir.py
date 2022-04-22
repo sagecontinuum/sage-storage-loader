@@ -7,7 +7,8 @@ import json
 
 
 def random_node_id():
-    return random.randbytes(8).hex()
+    i = random.randint(0, 9)
+    return f"000000000000000{i}"
 
 
 def random_task_name():
