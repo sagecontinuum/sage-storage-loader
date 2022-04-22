@@ -22,8 +22,6 @@ import (
 var newSession *session.Session
 var svc *s3.S3
 
-var delete_files_on_success bool
-
 //var maxMemory int64
 var s3bucket string
 
@@ -401,7 +399,7 @@ func main() {
 
 	log.Println("SAGE Uploader")
 
-	delete_files_on_success = getEnvBool("delete_files_on_success", false)
+	deleteFilesOnSuccess := getEnvBool("delete_files_on_success", true)
 
 	// dataRoot := getEnvString("data_dir", "/data")
 	dataRoot := getEnvString("data_dir", "test-data")
@@ -428,7 +426,7 @@ func main() {
 			defer wg.Done()
 			worker := &Worker{
 				DataRoot:             dataRoot,
-				DeleteFilesOnSuccess: delete_files_on_success,
+				DeleteFilesOnSuccess: deleteFilesOnSuccess,
 				Uploader:             uploader,
 				Jobs:                 jobs,
 				Results:              results,

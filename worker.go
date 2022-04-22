@@ -144,9 +144,9 @@ func (w *Worker) Process(job Job) error {
 
 	dataFileLocal := filepath.Join(full_dir, "data")
 	metaFileLocal := filepath.Join(full_dir, "meta")
+	doneFileLocal := filepath.Join(full_dir, DoneFilename)
 
-	rootFolder := "node-data"
-	s3path := fmt.Sprintf("%s/%s/sage-%s-%s/%s", rootFolder, p.Namespace, p.Name, p.Version, p.NodeID)
+	s3path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
 
 	uploadMeta := convertMetaToS3Meta(meta)
 
@@ -158,15 +158,20 @@ func (w *Worker) Process(job Job) error {
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(full_dir, DoneFilename), []byte{}, 0o644); err != nil {
+	if err := os.WriteFile(doneFileLocal, []byte{}, 0o644); err != nil {
 		return fmt.Errorf("could not create flag file: %s", err.Error())
 	}
 
 	if w.DeleteFilesOnSuccess {
-		if err := os.RemoveAll(full_dir); err != nil {
-			return fmt.Errorf("can not delete directory (%s): %s", full_dir, err.Error())
+		// clean up data, meta, done files and then parent dir
+		for _, name := range []string{dataFileLocal, metaFileLocal, doneFileLocal, filepath.Dir(dataFileLocal)} {
+			if err := os.Remove(name); err != nil {
+				return fmt.Errorf("failed to clean up %s", name)
+			}
 		}
 	}
+
+	// we don't want to remove parents yet... we'll clean those up later based on age...
 
 	return nil
 }
