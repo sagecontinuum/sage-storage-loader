@@ -30,6 +30,15 @@ def random_data():
     return random.randbytes(random.randint(0, 256))
 
 
+def random_labels():
+    meta = {}
+    for _ in range(random.randint(0, 3)):
+        k = random.randbytes(random.randint(1, 10)).hex()
+        v = random.randbytes(random.randint(1, 20)).hex()
+        meta[k] = v
+    return meta
+
+
 def add_random_item(data_dir):
     timestamp = time.time_ns()
     data = random_data()
@@ -38,10 +47,10 @@ def add_random_item(data_dir):
     meta = {
         "timestamp": timestamp,
         "shasum": shasum,
-        "labels": {
-            "filename": random_filename(),
-        }
+        "labels": random_labels()
     }
+
+    meta["labels"]["filename"] = random_filename()
 
     dir = Path(data_dir, f"node-{random_node_id()}/uploads/{random_task_name()}/{random_version()}/{timestamp}-{shasum}")
     dir.mkdir(parents=True, exist_ok=True)
