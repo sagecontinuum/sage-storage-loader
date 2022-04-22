@@ -36,20 +36,6 @@ var s3bucket string
 
 const DoneFilename = ".done"
 
-func readFilesystemLoop(files_dir string, perFileDelay time.Duration) {
-	count := 0
-	for {
-		count = (count + 1) % 10
-		log.Printf("start readFilesystem")
-		err := readFilesystem(files_dir, (count == 9), (count == 9), perFileDelay)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("start readFilesystem again in %d seconds", fs_sleep_sec)
-		time.Sleep(time.Second * time.Duration(fs_sleep_sec))
-	}
-}
-
 func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool, perFileDelay time.Duration) error {
 	total_data_files := 0
 	total_datameta_files := 0
@@ -65,28 +51,28 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 		files_dir += "/"
 	}
 
-	//max_files_add_in_loop := 100
-	for _, pattern := range patterns {
-		log.Printf("Searching for files in %s", pattern)
-
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			return fmt.Errorf("filepath.Glob failed: %s", err.Error())
-		}
-
-		for _, m := range matches {
-			total_data_files++
-			//if total_data_files >= max_files_add_in_loop {
-			//	return // we do not want to read too many files at once
-			//}
-			dir := filepath.Dir(m)
-
-			if _, err := os.Stat(filepath.Join(dir, DoneFilename)); err == nil {
-				continue
+	err := filepath.WalkDir(files_dir, func(path string, d fs.DirEntry, err error) error {
+		for _, pattern := range patterns {
+			ok, err := filepath.Match(pattern, path)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
 			}
 
+			total_data_files++
+
+			dir := filepath.Dir(path)
+
+			// skip if done file exists
+			if _, err := os.Stat(filepath.Join(dir, DoneFilename)); err == nil {
+				return filepath.SkipDir
+			}
+
+			// skip if meta file doesn't exist
 			if _, err := os.Stat(filepath.Join(dir, "meta")); errors.Is(err, os.ErrNotExist) {
-				continue
+				return filepath.SkipDir
 			}
 
 			total_datameta_files++
@@ -113,83 +99,146 @@ func readFilesystem(files_dir string, cleanupDirectories bool, cleanupDone bool,
 				}
 			}
 		}
+		return nil
+	})
+
+	if err != nil {
+		return err
 	}
+
+	// TODO(maybe just add a file garbage collector step periodically)
 
 	log.Printf("(readFilesystem) Total files: %d", total_datameta_files)
 	log.Printf("(readFilesystem) New files added: %d", new_files_count)
 
-	if cleanupDirectories {
-		// timestamp-sha directory should not exist anymore
-		globVersionDirs := filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*")
+	// if cleanupDirectories {
+	// 	// timestamp-sha directory should not exist anymore
+	// 	globVersionDirs := filepath.Join(files_dir, "node-*", "uploads", "*", "*", "*")
 
-		matches, err := filepath.Glob(globVersionDirs)
-		if err != nil {
-			return fmt.Errorf("filepath.Glob failed: %s", err.Error())
-		}
+	// 	matches, err := filepath.Glob(globVersionDirs)
+	// 	if err != nil {
+	// 		return fmt.Errorf("filepath.Glob failed: %s", err.Error())
+	// 	}
 
-		now := time.Now()
+	// 	now := time.Now()
 
-		threeDaysAgo := now.AddDate(0, 0, -3)
+	// 	threeDaysAgo := now.AddDate(0, 0, -3)
 
-		for _, dir := range matches {
-			log.Printf("got: %s", dir)
-			//dir := filepath.Dir(m)
-			var finfo fs.FileInfo
-			finfo, err = os.Stat(dir)
-			if err != nil {
-				err = nil
-				continue
-			}
-			if !finfo.IsDir() {
-				// not a directory
-				continue
-			}
-			if finfo.ModTime().After(threeDaysAgo) {
-				// not old enough
-				//log.Printf("not old enough")
-				continue
-			}
-			var isEmpty bool
-			isEmpty, err = IsDirectoryEmpty(dir)
-			if err != nil {
-				//log.Printf("some error")
-				//err = nil
-				continue
-			}
-			if !isEmpty {
-				//log.Printf("not empty")
-				continue
-			}
+	// 	for _, dir := range matches {
+	// 		log.Printf("got: %s", dir)
+	// 		//dir := filepath.Dir(m)
+	// 		var finfo fs.FileInfo
+	// 		finfo, err = os.Stat(dir)
+	// 		if err != nil {
+	// 			err = nil
+	// 			continue
+	// 		}
+	// 		if !finfo.IsDir() {
+	// 			// not a directory
+	// 			continue
+	// 		}
+	// 		if finfo.ModTime().After(threeDaysAgo) {
+	// 			// not old enough
+	// 			//log.Printf("not old enough")
+	// 			continue
+	// 		}
+	// 		var isEmpty bool
+	// 		isEmpty, err = IsDirectoryEmpty(dir)
+	// 		if err != nil {
+	// 			//log.Printf("some error")
+	// 			//err = nil
+	// 			continue
+	// 		}
+	// 		if !isEmpty {
+	// 			//log.Printf("not empty")
+	// 			continue
+	// 		}
 
-			err = os.Remove(dir)
-			if err != nil {
-				log.Printf("Could not remove old and empty directory: %s", err.Error())
-				continue
-			}
-			log.Printf("deleted directory: %s", dir)
-		}
-	}
+	// 		err = os.Remove(dir)
+	// 		if err != nil {
+	// 			log.Printf("Could not remove old and empty directory: %s", err.Error())
+	// 			continue
+	// 		}
+	// 		log.Printf("deleted directory: %s", dir)
+	// 	}
+	// }
 
-	// this removes "Done" enries from the index
-	if cleanupDone && delete_files_on_success {
-		toBeRemoved, err := index.GetList(Done)
-		if err != nil {
-			return fmt.Errorf("could not not get list of done jobs: %s", err.Error())
-		}
+	// // this removes "Done" enries from the index
+	// if cleanupDone && delete_files_on_success {
+	// 	toBeRemoved, err := index.GetList(Done)
+	// 	if err != nil {
+	// 		return fmt.Errorf("could not not get list of done jobs: %s", err.Error())
+	// 	}
 
-		log.Printf("trying to remove %d jobs from map", len(toBeRemoved))
-		count := 0
-		for _, job := range toBeRemoved {
-			if err := index.Remove(job, "cleanupDone"); err != nil {
-				return fmt.Errorf("could remove job from map: %s", err.Error())
-			}
-			//delete(index.Map, job)
-			count++
-		}
-		log.Printf("%d jobs removed from map", count)
-	}
+	// 	log.Printf("trying to remove %d jobs from map", len(toBeRemoved))
+	// 	count := 0
+	// 	for _, job := range toBeRemoved {
+	// 		if err := index.Remove(job, "cleanupDone"); err != nil {
+	// 			return fmt.Errorf("could remove job from map: %s", err.Error())
+	// 		}
+	// 		//delete(index.Map, job)
+	// 		count++
+	// 	}
+	// 	log.Printf("%d jobs removed from map", count)
+	// }
 
 	return nil
+}
+
+func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
+	patterns := []string{
+		filepath.Join(root, "node-*", "uploads", "*", "*", "*", "data"),      // uploads without a namespace
+		filepath.Join(root, "node-*", "uploads", "*", "*", "*", "*", "data"), // uploads with a namespace
+	}
+
+	// makes it easier to remove the path prefix later
+	if !strings.HasSuffix(root, "/") {
+		root += "/"
+	}
+
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		select {
+		case <-stop:
+			return fmt.Errorf("walk stopped")
+		default:
+		}
+
+		for _, pattern := range patterns {
+			ok, err := filepath.Match(pattern, path)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+
+			dir := filepath.Dir(path)
+
+			// skip if done file exists
+			if _, err := os.Stat(filepath.Join(dir, DoneFilename)); err == nil {
+				return filepath.SkipDir
+			}
+
+			// skip if meta file doesn't exist
+			if _, err := os.Stat(filepath.Join(dir, "meta")); errors.Is(err, os.ErrNotExist) {
+				return filepath.SkipDir
+			}
+
+			// relpath = filepath.Rel(root, path)
+			dir = strings.TrimPrefix(dir, root)
+
+			select {
+			case jobs <- Job(dir):
+				fmt.Printf("*** add %s", dir)
+			case <-stop:
+				return fmt.Errorf("walk stopped")
+			}
+		}
+
+		return nil
+	})
+
+	// TODO(maybe just add a file garbage collector step periodically)
 }
 
 // source: https://stackoverflow.com/a/30708914/2069181
@@ -214,27 +263,6 @@ func IsDirectoryEmpty(name string) (bool, error) {
 	return false, err // Either not empty or error, suits both cases
 }
 
-func getPendingCandidates(max_count int) (candidates []string, err error) {
-	// read candidates first
-	rlock, err := index.RLockNamed("fillQueue-read")
-	defer index.RUnlockNamed(rlock)
-	if err != nil {
-		log.Fatal(err)
-	}
-	candidates = []string{}
-	for key, value := range index.Map {
-		if value != Pending {
-			continue
-		}
-		candidates = append(candidates, key)
-		if len(candidates) >= max_count {
-			return
-		}
-	}
-
-	return
-}
-
 func fillJobQueue(stop <-chan struct{}, candidateArrayLen int) (<-chan Job, <-chan error) {
 	jobs := make(chan Job)
 	errc := make(chan error, 1)
@@ -242,31 +270,18 @@ func fillJobQueue(stop <-chan struct{}, candidateArrayLen int) (<-chan Job, <-ch
 	go func() {
 		defer close(jobs)
 		for {
-			candidates, err := getPendingCandidates(candidateArrayLen)
-			if err != nil {
-				errc <- fmt.Errorf("getPendingCandidates failed: %s", err.Error())
+			log.Printf("scanning for jobs...")
+			if err := scanForJobs(stop, jobs, dataDirectory); err != nil {
+				errc <- err
 				return
 			}
+			log.Printf("done scanning for jobs!")
 
-			for _, cand := range candidates {
-				select {
-				case jobs <- Job(cand):
-					index.Set(cand, Active, "fillQueue")
-				case <-stop:
-					errc <- nil
-					return
-				}
-			}
-
-			// NOTE(sean) eventually will not need this, this will be integrated into file scan
 			select {
+			case <-time.After(10 * time.Second):
 			case <-stop:
-				errc <- nil
 				return
-			default:
 			}
-
-			time.Sleep(3 * time.Second)
 		}
 	}()
 
@@ -413,12 +428,8 @@ func main() {
 	// dataDirectory = getEnvString("data_dir", "/data")
 	dataDirectory = getEnvString("data_dir", "test-data")
 
-	readFilesystem(dataDirectory, delete_files_on_success, delete_files_on_success, 0)
-	log.Printf("Initial readFilesystem done.")
-
-	if !one_fs_scan_only {
-		go readFilesystemLoop(dataDirectory, 100*time.Millisecond)
-	}
+	// readFilesystem(dataDirectory, delete_files_on_success, delete_files_on_success, 0)
+	// log.Printf("Initial readFilesystem done.")
 
 	stop := make(chan struct{})
 
@@ -426,8 +437,8 @@ func main() {
 	signal.Notify(sig, os.Interrupt)
 	go func() {
 		<-sig
+		log.Printf("stopping...")
 		close(stop)
-		log.Printf("signal to close")
 	}()
 
 	jobs, _ := fillJobQueue(stop, candiateArrayLen)

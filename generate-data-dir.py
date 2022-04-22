@@ -63,7 +63,6 @@ def add_random_item(data_dir):
     Path(dir, ".partial").rmdir()
 
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", type=Path, default="test-data")
