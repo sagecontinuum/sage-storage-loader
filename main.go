@@ -26,11 +26,6 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 		filepath.Join(root, "node-*", "uploads", "*", "*", "*", "*", "data"), // uploads with a namespace
 	}
 
-	// makes it easier to remove the path prefix later
-	if !strings.HasSuffix(root, "/") {
-		root += "/"
-	}
-
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		select {
 		case <-stop:
@@ -41,7 +36,9 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 		for _, pattern := range patterns {
 			ok, err := filepath.Match(pattern, path)
 			if err != nil {
-				return err
+				// According to the docs, this will only fail if the pattern is invalid. I just fail here
+				// since there's no way to recover and it will indicate a typo in the pattern list.
+				log.Fatalf("bad glob pattern: %s", err.Error())
 			}
 			if !ok {
 				return nil
@@ -59,11 +56,13 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 				return filepath.SkipDir
 			}
 
-			// relpath = filepath.Rel(root, path)
-			dir = strings.TrimPrefix(dir, root)
+			reldir, err := filepath.Rel(root, dir)
+			if err != nil {
+				return err
+			}
 
 			select {
-			case jobs <- Job(dir):
+			case jobs <- Job{Root: root, Dir: reldir}:
 			case <-stop:
 				return fmt.Errorf("walk stopped")
 			}
@@ -71,8 +70,6 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 
 		return nil
 	})
-
-	// TODO(maybe just add a file garbage collector step periodically)
 }
 
 func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) {
@@ -162,7 +159,6 @@ func getEnvBool(key string, fallback bool) bool {
 		if value == "1" {
 			return true
 		}
-
 		return false
 	}
 	return fallback
@@ -210,7 +206,6 @@ func main() {
 		go func() {
 			defer wg.Done()
 			worker := &Worker{
-				DataRoot:             dataRoot,
 				DeleteFilesOnSuccess: deleteFilesOnSuccess,
 				Uploader:             uploader,
 				Jobs:                 jobs,

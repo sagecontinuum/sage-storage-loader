@@ -9,11 +9,12 @@ import (
 	"time"
 )
 
-type Job string
+type Job struct {
+	Root string
+	Dir  string
+}
 
 type Worker struct {
-	DataRoot             string
-	Skipped              int64
 	Uploader             FileUploader
 	DeleteFilesOnSuccess bool
 	Jobs                 <-chan Job
@@ -41,9 +42,9 @@ func (worker *Worker) Run() {
 		var result string
 
 		if err := worker.Process(job); err != nil {
-			result = fmt.Sprintf("error %s %s", job, err.Error())
+			result = fmt.Sprintf("job error: %+v %s", job, err.Error())
 		} else {
-			result = fmt.Sprintf("ok %s", job)
+			result = fmt.Sprintf("job ok: %+v", job)
 		}
 
 		select {
@@ -55,23 +56,23 @@ func (worker *Worker) Run() {
 }
 
 func parseUploadPath(dir string) (*UploadInfo, error) {
-	dir_array := strings.Split(dir, "/")
+	fields := strings.Split(dir, "/")
 
 	p := &UploadInfo{
-		NodeID:    strings.TrimPrefix(dir_array[0], "node-"),
+		NodeID:    strings.TrimPrefix(fields[0], "node-"),
 		Namespace: "sage", // sage is the default in cases where no namespace was given
 		Name:      "",
 		Version:   "",
 	}
 
-	switch len(dir_array) {
+	switch len(fields) {
 	case 6:
-		p.Namespace = dir_array[2]
-		p.Name = dir_array[3]
-		p.Version = dir_array[4]
+		p.Namespace = fields[2]
+		p.Name = fields[3]
+		p.Version = fields[4]
 	case 5: // namespace is missing
-		p.Name = dir_array[2]
-		p.Version = dir_array[3]
+		p.Name = fields[2]
+		p.Version = fields[3]
 	default:
 		return nil, fmt.Errorf("could not parse path %s", dir)
 	}
@@ -80,17 +81,18 @@ func parseUploadPath(dir string) (*UploadInfo, error) {
 }
 
 func (w *Worker) Process(job Job) error {
-	dir := string(job) // starts with  node-000048b02d...
-	uploadDir := filepath.Join(w.DataRoot, dir)
-
-	p, err := parseUploadPath(dir)
+	p, err := parseUploadPath(job.Dir)
 	if err != nil {
 		return err
 	}
 
+	dataPath := filepath.Join(job.Root, job.Dir, "data")
+	metaPath := filepath.Join(job.Root, job.Dir, "meta")
+	donePath := filepath.Join(job.Root, job.Dir, DoneFilename)
+
 	var meta MetaData
 
-	if err := readMetaFile(filepath.Join(uploadDir, "meta"), &meta); err != nil {
+	if err := readMetaFile(metaPath, &meta); err != nil {
 		return err
 	}
 
@@ -103,21 +105,17 @@ func (w *Worker) Process(job Job) error {
 	targetNameData := fmt.Sprintf("%d-%s", meta.Timestamp.UnixNano(), labelFilename)
 	targetNameMeta := fmt.Sprintf("%d-%s.meta", meta.Timestamp.UnixNano(), labelFilename)
 
-	dataFileLocal := filepath.Join(uploadDir, "data")
-	metaFileLocal := filepath.Join(uploadDir, "meta")
-	doneFileLocal := filepath.Join(uploadDir, DoneFilename)
-
 	s3path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
 
-	if err := w.Uploader.UploadFile(dataFileLocal, filepath.Join(s3path, targetNameData), &meta); err != nil {
+	if err := w.Uploader.UploadFile(dataPath, filepath.Join(s3path, targetNameData), &meta); err != nil {
 		return err
 	}
 
-	if err := w.Uploader.UploadFile(metaFileLocal, filepath.Join(s3path, targetNameMeta), nil); err != nil {
+	if err := w.Uploader.UploadFile(metaPath, filepath.Join(s3path, targetNameMeta), nil); err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(doneFileLocal, []byte{}, 0o644); err != nil {
+	if err := os.WriteFile(donePath, []byte{}, 0o644); err != nil {
 		return fmt.Errorf("could not create flag file: %s", err.Error())
 	}
 
@@ -126,7 +124,7 @@ func (w *Worker) Process(job Job) error {
 	// deleting, we want to move files to a done directory.
 	if w.DeleteFilesOnSuccess {
 		// Clean up data, meta and done files.
-		for _, name := range []string{dataFileLocal, metaFileLocal, doneFileLocal} {
+		for _, name := range []string{dataPath, metaPath, donePath} {
 			if err := os.Remove(name); err != nil {
 				return fmt.Errorf("failed to clean up %s", name)
 			}
@@ -143,7 +141,7 @@ func (w *Worker) Process(job Job) error {
 		// In order for this to happen, the OSN loader would have to upload and clean up the
 		// last staged item for a task right when that task is posting a new upload. This seems
 		// potentially rare enough that I'd opt for simpler, more robust cleanup logic for now.
-		for p := filepath.Dir(dataFileLocal); filepath.Base(p) != "uploads"; p = filepath.Dir(p) {
+		for p := filepath.Dir(dataPath); filepath.Base(p) != "uploads"; p = filepath.Dir(p) {
 			if err := os.Remove(p); err != nil {
 				break
 			}
