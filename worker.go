@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -110,9 +109,7 @@ func (w *Worker) Process(job Job) error {
 
 	s3path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
 
-	uploadMeta := convertMetaToS3Meta(&meta)
-
-	if err := w.Uploader.UploadFile(dataFileLocal, filepath.Join(s3path, targetNameData), uploadMeta); err != nil {
+	if err := w.Uploader.UploadFile(dataFileLocal, filepath.Join(s3path, targetNameData), &meta); err != nil {
 		return err
 	}
 
@@ -156,20 +153,6 @@ func (w *Worker) Process(job Job) error {
 	return nil
 }
 
-func convertMetaToS3Meta(meta *MetaData) map[string]string {
-	m := map[string]string{
-		"name": meta.Name,
-		"ts":   strconv.FormatInt(meta.Timestamp.UnixNano(), 10),
-	}
-	if meta.Shasum != nil {
-		m["shasum"] = *meta.Shasum
-	}
-	for k, v := range meta.Meta {
-		m["meta."+k] = v
-	}
-	return m
-}
-
 func readMetaFile(name string, m *MetaData) error {
 	var data struct {
 		EpochNano    *int64            `json:"ts"`
@@ -184,7 +167,6 @@ func readMetaFile(name string, m *MetaData) error {
 	}
 
 	m.Name = "upload"
-	m.Shasum = nil
 
 	// detect timestamp
 	switch {
@@ -206,13 +188,12 @@ func readMetaFile(name string, m *MetaData) error {
 		return fmt.Errorf("meta file is missing meta fields")
 	}
 
-	// check if filename meta exists
-	filename, ok := m.Meta["filename"]
-	if !ok {
-		return fmt.Errorf("missing filename metadata")
+	if m.Meta["filename"] == "" {
+		return fmt.Errorf("filename metadata must exist and be nonempty")
 	}
-	if filename == "" {
-		return fmt.Errorf("filename metadata cannot be empty")
+
+	if data.Shasum != nil {
+		m.Shasum = data.Shasum
 	}
 
 	return nil

@@ -156,7 +156,7 @@ func NewMockUploader() *MockUploader {
 	}
 }
 
-func (up *MockUploader) UploadFile(src, dst string, meta map[string]string) error {
+func (up *MockUploader) UploadFile(src, dst string, meta *MetaData) error {
 	if up.Error != nil {
 		return up.Error
 	}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -15,12 +16,12 @@ import (
 
 type FileUploader interface {
 	// TODO(sean) is this the right interface? maybe we can more closely match the s3 UploadInput?
-	UploadFile(src, dst string, meta map[string]string) error
+	UploadFile(src, dst string, meta *MetaData) error
 }
 
 type S3Uploader struct{}
 
-func (up *S3Uploader) UploadFile(src, dst string, meta map[string]string) error {
+func (up *S3Uploader) UploadFile(src, dst string, meta *MetaData) error {
 	contentMD5, err := computeContentBase64MD5(src)
 	if err != nil {
 		return err
@@ -45,7 +46,7 @@ func (up *S3Uploader) UploadFile(src, dst string, meta map[string]string) error 
 		Key:        aws.String(dst),
 		Body:       f,
 		ContentMD5: aws.String(contentMD5),
-		Metadata:   aws.StringMap(meta),
+		Metadata:   aws.StringMap(convertMetaToS3Metadata(meta)),
 	}
 
 	// Upload the file to S3.
@@ -58,6 +59,20 @@ func (up *S3Uploader) UploadFile(src, dst string, meta map[string]string) error 
 	// TODO(sean) confirm file or content length can be read back out?
 	// TODO(sean) the return string was left as missing before. why is this?
 	return nil
+}
+
+func convertMetaToS3Metadata(meta *MetaData) map[string]string {
+	m := map[string]string{
+		"name": meta.Name,
+		"ts":   strconv.FormatInt(meta.Timestamp.UnixNano(), 10),
+	}
+	if meta.Shasum != nil {
+		m["shasum"] = *meta.Shasum
+	}
+	for k, v := range meta.Meta {
+		m["meta."+k] = v
+	}
+	return m
 }
 
 func computeContentBase64MD5(name string) (string, error) {
@@ -93,7 +108,7 @@ func uploadExistsInS3(s3key string) bool {
 
 type TestUploader struct{}
 
-func (up *TestUploader) UploadFile(src, dst string, meta map[string]string) error {
+func (up *TestUploader) UploadFile(src, dst string, meta *MetaData) error {
 	log.Printf("would upload file\nsrc: %s\ndst: %s\nmeta: %+v\n\n", src, dst, meta)
 	return nil
 }
