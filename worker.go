@@ -104,7 +104,6 @@ func (w *Worker) Process(job Job) error {
 	labelFilename := meta.Meta["filename"]
 	targetNameData := fmt.Sprintf("%d-%s", meta.Timestamp.UnixNano(), labelFilename)
 	targetNameMeta := fmt.Sprintf("%d-%s.meta", meta.Timestamp.UnixNano(), labelFilename)
-
 	s3path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
 
 	if err := w.Uploader.UploadFile(dataPath, filepath.Join(s3path, targetNameData), &meta); err != nil {

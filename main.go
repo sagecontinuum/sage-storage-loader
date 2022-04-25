@@ -105,7 +105,7 @@ func mustGetenv(key string) string {
 	return val
 }
 
-func mustGetS3Uploader() *S3Uploader {
+func mustGetS3Uploader() *S3FileUploader {
 	endpoint := mustGetenv("s3Endpoint")
 	accessKeyID := mustGetenv("s3accessKeyID")
 	secretAccessKey := mustGetenv("s3secretAccessKey")
@@ -130,7 +130,7 @@ func mustGetS3Uploader() *S3Uploader {
 		log.Fatalf("failed to create s3 session: %s", err.Error())
 	}
 
-	return &S3Uploader{
+	return &S3FileUploader{
 		Session: session,
 		Bucket:  bucket,
 	}
@@ -173,7 +173,7 @@ func main() {
 	if useS3 {
 		uploader = mustGetS3Uploader()
 	} else {
-		uploader = &TestUploader{}
+		uploader = &LogFileUploader{}
 	}
 
 	numWorkers := getEnvInt("workers", 1) // 10 suggested for production
