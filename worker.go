@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Job string
@@ -22,13 +23,18 @@ type Worker struct {
 }
 
 type MetaData struct {
-	Name         string            `json:"name"` // always set as "upload"
-	EpochNano    int64             `json:"ts,omitempty"`
-	EpochNanoOld *int64            `json:"timestamp,omitempty"` // only for reading (deprecated soon), keep it backwards compatible
-	Shasum       *string           `json:"shasum,omitempty"`
-	Labels       map[string]string `json:"labels,omitempty"` // only read (will write to meta)
-	Meta         map[string]string `json:"meta"`
-	Value        string            `json:"val"` // only used to output URL, input is assumed to be empty
+	Name      string
+	Timestamp time.Time
+	Shasum    *string
+	Meta      map[string]string
+	Value     string
+}
+
+type UploadInfo struct {
+	NodeID    string
+	Namespace string
+	Name      string
+	Version   string
 }
 
 func (worker *Worker) Run() {
@@ -47,13 +53,6 @@ func (worker *Worker) Run() {
 			return
 		}
 	}
-}
-
-type UploadInfo struct {
-	NodeID    string
-	Namespace string
-	Name      string
-	Version   string
 }
 
 func parseUploadPath(dir string) (*UploadInfo, error) {
@@ -102,8 +101,8 @@ func (w *Worker) Process(job Job) error {
 	meta.Meta["plugin"] = p.Namespace + "/" + p.Name + ":" + p.Version
 
 	labelFilename := meta.Meta["filename"]
-	targetNameData := fmt.Sprintf("%d-%s", meta.EpochNano, labelFilename)
-	targetNameMeta := fmt.Sprintf("%d-%s.meta", meta.EpochNano, labelFilename)
+	targetNameData := fmt.Sprintf("%d-%s", meta.Timestamp.UnixNano(), labelFilename)
+	targetNameMeta := fmt.Sprintf("%d-%s.meta", meta.Timestamp.UnixNano(), labelFilename)
 
 	dataFileLocal := filepath.Join(uploadDir, "data")
 	metaFileLocal := filepath.Join(uploadDir, "meta")
@@ -160,7 +159,7 @@ func (w *Worker) Process(job Job) error {
 func convertMetaToS3Meta(meta *MetaData) map[string]string {
 	m := map[string]string{
 		"name": meta.Name,
-		"ts":   strconv.FormatInt(meta.EpochNano, 10),
+		"ts":   strconv.FormatInt(meta.Timestamp.UnixNano(), 10),
 	}
 	if meta.Shasum != nil {
 		m["shasum"] = *meta.Shasum
@@ -172,25 +171,42 @@ func convertMetaToS3Meta(meta *MetaData) map[string]string {
 }
 
 func readMetaFile(name string, m *MetaData) error {
-	if err := readJSONFile(name, m); err != nil {
+	var data struct {
+		EpochNano    *int64            `json:"ts"`
+		EpochNanoOld *int64            `json:"timestamp"` // only for reading (deprecated soon), keep it backwards compatible
+		Shasum       *string           `json:"shasum"`
+		Meta         map[string]string `json:"meta"`
+		MetaOld      map[string]string `json:"labels"` // only read (will write to meta)
+	}
+
+	if err := readJSONFile(name, &data); err != nil {
 		return err
 	}
 
 	m.Name = "upload"
-
-	if m.EpochNanoOld != nil {
-		m.EpochNano = *m.EpochNanoOld
-		m.EpochNanoOld = nil
-	}
-
-	// read Labels only if Meta is empty
-	if m.Meta == nil {
-		m.Meta = m.Labels
-		m.Labels = nil
-	}
-
 	m.Shasum = nil
 
+	// detect timestamp
+	switch {
+	case data.EpochNano != nil:
+		m.Timestamp = time.Unix(0, *data.EpochNano)
+	case data.EpochNanoOld != nil:
+		m.Timestamp = time.Unix(0, *data.EpochNanoOld)
+	default:
+		return fmt.Errorf("meta file is missing timestamp")
+	}
+
+	// detect meta
+	switch {
+	case data.Meta != nil:
+		m.Meta = data.Meta
+	case data.MetaOld != nil:
+		m.Meta = data.MetaOld
+	default:
+		return fmt.Errorf("meta file is missing meta fields")
+	}
+
+	// check if filename meta exists
 	filename, ok := m.Meta["filename"]
 	if !ok {
 		return fmt.Errorf("missing filename metadata")

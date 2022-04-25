@@ -53,7 +53,7 @@ func (up *S3Uploader) UploadFile(src, dst string, meta map[string]string) error 
 	if err != nil {
 		return err
 	}
-	fmt.Printf("file uploaded to, %s\n", result.Location)
+	fmt.Printf("file uploaded to s3 at %s\n", result.Location)
 
 	// TODO(sean) confirm file or content length can be read back out?
 	// TODO(sean) the return string was left as missing before. why is this?
