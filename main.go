@@ -16,14 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 )
-
-var newSession *session.Session
-var svc *s3.S3
-
-//var maxMemory int64
-var s3bucket string
 
 const DoneFilename = ".done"
 
@@ -107,80 +100,43 @@ func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) 
 	return jobs, errc
 }
 
-func configS3() {
-	/*
-		export s3Endpoint=http://minio:9000
-		export s3accessKeyID=minio
-		export s3secretAccessKey=minio123
-		export s3bucket=sage
-	*/
-
-	/*
-		export s3Endpoint=http://host.docker.internal:9001
-		export s3accessKeyID=minio
-		export s3secretAccessKey=minio123
-		export s3bucket=sage
-	*/
-	var s3Endpoint string
-	var s3accessKeyID string
-	var s3secretAccessKey string
-
-	//flag.StringVar(&s3Endpoint, "s3Endpoint", "", "")
-	//flag.StringVar(&s3accessKeyID, "s3accessKeyID", "", "")
-	//flag.StringVar(&s3secretAccessKey, "s3secretAccessKey", "", "")
-	s3Endpoint = os.Getenv("s3Endpoint")
-	s3accessKeyID = os.Getenv("s3accessKeyID")
-	s3secretAccessKey = os.Getenv("s3secretAccessKey")
-	s3bucket = os.Getenv("s3bucket")
-
-	log.Printf("s3Endpoint: %s", s3Endpoint)
-	log.Printf("s3accessKeyID: %s", s3accessKeyID)
-	log.Printf("s3bucket: %s", s3bucket)
-
-	if s3Endpoint == "" {
-		log.Fatalf("s3Endpoint not defined")
-		return
+func mustGetenv(key string) string {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		log.Fatalf("env var must be defined: %s", key)
 	}
+	return val
+}
 
-	if s3bucket == "" {
-		log.Fatalf("s3bucket not defined")
-		return
-	}
-
-	if s3accessKeyID == "" {
-		log.Fatalf("s3accessKeyID not defined")
-		return
-	}
-
-	if s3secretAccessKey == "" {
-		log.Fatalf("s3secretAccessKey not defined")
-		return
-	}
+func mustGetS3Uploader() *S3Uploader {
+	endpoint := mustGetenv("s3Endpoint")
+	accessKeyID := mustGetenv("s3accessKeyID")
+	secretAccessKey := mustGetenv("s3secretAccessKey")
+	bucket := mustGetenv("s3bucket")
 
 	region := "us-west-2"
 	//region := "us-east-1" // minio default
-	disableSSL := !strings.HasPrefix(s3Endpoint, "https")
+	disableSSL := !strings.HasPrefix(endpoint, "https")
 	//log.Printf("HasPrefix: %t", strings.HasPrefix(s3Endpoint, "https"))
 	//log.Printf("disableSSL: %t", disableSSL)
 	//os.Exit(0)
-	s3FPS := true
 	//maxMemory = 32 << 20 // 32Mb
 
-	// Initialize s3
-	s3Config := &aws.Config{
-		Credentials:      credentials.NewStaticCredentials(s3accessKeyID, s3secretAccessKey, ""),
-		Endpoint:         aws.String(s3Endpoint),
+	session, err := session.NewSession(&aws.Config{
+		Credentials:      credentials.NewStaticCredentials(accessKeyID, secretAccessKey, ""),
+		Endpoint:         aws.String(endpoint),
 		Region:           aws.String(region),
 		DisableSSL:       aws.Bool(disableSSL),
-		S3ForcePathStyle: aws.Bool(s3FPS),
+		S3ForcePathStyle: aws.Bool(true),
+	})
+	if err != nil {
+		log.Fatalf("failed to create s3 session: %s", err.Error())
 	}
 
-	var err error
-	newSession, err = session.NewSession(s3Config) // session.New(s3Config)
-	if err != nil {
-		log.Fatalf("session.NewSession failed: %s", err.Error())
+	return &S3Uploader{
+		Session: session,
+		Bucket:  bucket,
 	}
-	svc = s3.New(newSession)
 }
 
 func getEnvString(key string, fallback string) string {
@@ -219,7 +175,7 @@ func main() {
 	var uploader FileUploader
 
 	if useS3 {
-		configS3()
+		uploader = mustGetS3Uploader()
 	} else {
 		uploader = &TestUploader{}
 	}
