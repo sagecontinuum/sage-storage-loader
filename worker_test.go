@@ -53,11 +53,11 @@ func TestWorkerProcess(t *testing.T) {
 func TestParseUploadPath(t *testing.T) {
 	testcases := map[string]struct {
 		Dir  string
-		Info pInfo
+		Info UploadInfo
 	}{
 		"default": {
 			Dir: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-8ca463ebcfab357f5d07c2529fb3939ddb4a5c32",
-			Info: pInfo{
+			Info: UploadInfo{
 				Namespace: "sage",
 				Name:      "imagesampler-top",
 				Version:   "0.2.5",
@@ -66,7 +66,7 @@ func TestParseUploadPath(t *testing.T) {
 		},
 		"namespace1": {
 			Dir: "node-000048b02d15bc7d/uploads/Pluginctl/imagesampler-top/1.2.7/1638576647406523064-8ca463ebcfab357f5d07c2529fb3939ddb4a5c32",
-			Info: pInfo{
+			Info: UploadInfo{
 				Namespace: "Pluginctl",
 				Name:      "imagesampler-top",
 				Version:   "1.2.7",
@@ -75,7 +75,7 @@ func TestParseUploadPath(t *testing.T) {
 		},
 		"namespace2": {
 			Dir: "node-00004cd98fc686c9/uploads/smoke-detector-1650456133/plugin-test-pipeline-0-2-8-1f055011/0.2.8/1649087778906567900-a31446e4291ac3a04a3c331e674252a63ee95604",
-			Info: pInfo{
+			Info: UploadInfo{
 				Namespace: "smoke-detector-1650456133",
 				Name:      "plugin-test-pipeline-0-2-8-1f055011",
 				Version:   "0.2.8",
@@ -120,16 +120,16 @@ func newTempDir(t *testing.T) string {
 
 	items := map[string][]byte{
 		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte(`testing`),
-		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"meta":{"filename":"wow1.txt"}}`),
+		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"timestamp":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
 
 		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.6/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte("testing"),
-		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.6/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"meta":{"filename":"wow2.txt"}}`),
+		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.6/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"timestamp":1638576647406523064,"labels":{"filename":"wow2.txt"}}`),
 
 		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte("testing"),
-		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"meta":{"filename":"wow3.txt"}}`),
+		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"timestamp":1638576647406523064,"labels":{"filename":"wow3.txt"}}`),
 
 		"node-000048b02d15bc7d/uploads/namespace/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte("testing in namespace"),
-		"node-000048b02d15bc7d/uploads/namespace/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"meta":{"filename":"wow4.txt"}}`),
+		"node-000048b02d15bc7d/uploads/namespace/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow4.txt"}}`),
 
 		"node-000048b02d15bc7d/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/.partial/hello": []byte("!!! you should never see me !!!"),
 	}

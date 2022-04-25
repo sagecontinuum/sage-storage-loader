@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,18 +22,14 @@ type Worker struct {
 }
 
 type MetaData struct {
-	Name         string                 `json:"name"` // always set as "upload"
-	EpochNano    int64                  `json:"ts,omitempty"`
-	EpochNanoOld *int64                 `json:"timestamp,omitempty"` // only for reading (deprecated soon), keep it backwards compatible
-	Shasum       *string                `json:"shasum,omitempty"`
-	Labels       map[string]interface{} `json:"labels,omitempty"` // only read (will write to meta)
-	Meta         map[string]interface{} `json:"meta"`
-	Value        string                 `json:"val"` // only used to output URL, input is assumed to be empty
+	Name         string            `json:"name"` // always set as "upload"
+	EpochNano    int64             `json:"ts,omitempty"`
+	EpochNanoOld *int64            `json:"timestamp,omitempty"` // only for reading (deprecated soon), keep it backwards compatible
+	Shasum       *string           `json:"shasum,omitempty"`
+	Labels       map[string]string `json:"labels,omitempty"` // only read (will write to meta)
+	Meta         map[string]string `json:"meta"`
+	Value        string            `json:"val"` // only used to output URL, input is assumed to be empty
 }
-
-var sage_storage_api = "http://host.docker.internal:8080"
-var sage_storage_token = "user:test"
-var sage_storage_username = "test"
 
 func (worker *Worker) Run() {
 	for job := range worker.Jobs {
@@ -54,17 +49,17 @@ func (worker *Worker) Run() {
 	}
 }
 
-type pInfo struct {
+type UploadInfo struct {
 	NodeID    string
 	Namespace string
 	Name      string
 	Version   string
 }
 
-func parseUploadPath(dir string) (*pInfo, error) {
+func parseUploadPath(dir string) (*UploadInfo, error) {
 	dir_array := strings.Split(dir, "/")
 
-	p := &pInfo{
+	p := &UploadInfo{
 		NodeID:    strings.TrimPrefix(dir_array[0], "node-"),
 		Namespace: "sage", // sage is the default in cases where no namespace was given
 		Name:      "",
@@ -86,71 +81,37 @@ func parseUploadPath(dir string) (*pInfo, error) {
 	return p, nil
 }
 
-func getMetadata(full_dir string) (*MetaData, error) {
-	content, err := ioutil.ReadFile(filepath.Join(full_dir, "meta"))
-	if err != nil {
-		return nil, err
-	}
-	meta := &MetaData{}
-	if err := json.Unmarshal(content, meta); err != nil {
-		return nil, err
-	}
-	return meta, nil
-}
-
 func (w *Worker) Process(job Job) error {
 	dir := string(job) // starts with  node-000048b02d...
-	full_dir := filepath.Join(w.DataRoot, dir)
+	uploadDir := filepath.Join(w.DataRoot, dir)
 
 	p, err := parseUploadPath(dir)
 	if err != nil {
 		return err
 	}
 
-	meta, err := getMetadata(full_dir)
-	if err != nil {
+	var meta MetaData
+
+	if err := readMetaFile(filepath.Join(uploadDir, "meta"), &meta); err != nil {
 		return err
-	}
-
-	meta.Name = "upload"
-
-	if meta.EpochNanoOld != nil {
-		meta.EpochNano = *meta.EpochNanoOld
-		meta.EpochNanoOld = nil
-	}
-
-	if meta.Meta == nil { // read Labels only if Meta is empty
-		meta.Meta = meta.Labels
-		meta.Labels = nil
-	}
-	meta.Shasum = nil
-
-	labelFilenameIf, ok := meta.Meta["filename"]
-	if !ok {
-		return fmt.Errorf("label field  filename is missing")
-	}
-	labelFilename, ok := labelFilenameIf.(string)
-	if !ok {
-		return fmt.Errorf("label field filename is not a string")
-	}
-	if len(labelFilename) == 0 {
-		return fmt.Errorf("label field filename is empty")
 	}
 
 	// Add info extracted from path.
 	meta.Meta["node"] = strings.ToLower(p.NodeID)
+	// TODO(sean) reconcile namespace and job usage
 	meta.Meta["plugin"] = p.Namespace + "/" + p.Name + ":" + p.Version
 
+	labelFilename := meta.Meta["filename"]
 	targetNameData := fmt.Sprintf("%d-%s", meta.EpochNano, labelFilename)
 	targetNameMeta := fmt.Sprintf("%d-%s.meta", meta.EpochNano, labelFilename)
 
-	dataFileLocal := filepath.Join(full_dir, "data")
-	metaFileLocal := filepath.Join(full_dir, "meta")
-	doneFileLocal := filepath.Join(full_dir, DoneFilename)
+	dataFileLocal := filepath.Join(uploadDir, "data")
+	metaFileLocal := filepath.Join(uploadDir, "meta")
+	doneFileLocal := filepath.Join(uploadDir, DoneFilename)
 
 	s3path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
 
-	uploadMeta := convertMetaToS3Meta(meta)
+	uploadMeta := convertMetaToS3Meta(&meta)
 
 	if err := w.Uploader.UploadFile(dataFileLocal, filepath.Join(s3path, targetNameData), uploadMeta); err != nil {
 		return err
@@ -164,6 +125,9 @@ func (w *Worker) Process(job Job) error {
 		return fmt.Errorf("could not create flag file: %s", err.Error())
 	}
 
+	// TODO(sean) If we see the need to support various clean up strategies,
+	// we should just make this step plugable. For example, maybe instead of
+	// deleting, we want to move files to a done directory.
 	if w.DeleteFilesOnSuccess {
 		// Clean up data, meta and done files.
 		for _, name := range []string{dataFileLocal, metaFileLocal, doneFileLocal} {
@@ -194,19 +158,55 @@ func (w *Worker) Process(job Job) error {
 }
 
 func convertMetaToS3Meta(meta *MetaData) map[string]string {
-	s3metadata := make(map[string]string)
-
-	s3metadata["name"] = meta.Name
-	s3metadata["ts"] = strconv.FormatInt(meta.EpochNano, 10)
+	m := map[string]string{
+		"name": meta.Name,
+		"ts":   strconv.FormatInt(meta.EpochNano, 10),
+	}
 	if meta.Shasum != nil {
-		s3metadata["shasum"] = *meta.Shasum
+		m["shasum"] = *meta.Shasum
+	}
+	for k, v := range meta.Meta {
+		m["meta."+k] = v
+	}
+	return m
+}
+
+func readMetaFile(name string, m *MetaData) error {
+	if err := readJSONFile(name, m); err != nil {
+		return err
 	}
 
-	for key, value := range meta.Meta {
-		if s, ok := value.(string); ok {
-			s3metadata["meta."+key] = s
-		}
+	m.Name = "upload"
+
+	if m.EpochNanoOld != nil {
+		m.EpochNano = *m.EpochNanoOld
+		m.EpochNanoOld = nil
 	}
 
-	return s3metadata
+	// read Labels only if Meta is empty
+	if m.Meta == nil {
+		m.Meta = m.Labels
+		m.Labels = nil
+	}
+
+	m.Shasum = nil
+
+	filename, ok := m.Meta["filename"]
+	if !ok {
+		return fmt.Errorf("missing filename metadata")
+	}
+	if filename == "" {
+		return fmt.Errorf("filename metadata cannot be empty")
+	}
+
+	return nil
+}
+
+func readJSONFile(name string, v interface{}) error {
+	f, err := os.Open(name)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return json.NewDecoder(f).Decode(v)
 }
