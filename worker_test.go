@@ -54,6 +54,25 @@ func (up *mockUploader) UploadFile(src, dst string, meta *MetaData) error {
 	return nil
 }
 
+func scanAndProcessDirOnce(worker *Worker, root string) error {
+	stop := make(chan struct{})
+	defer close(stop)
+	jobs := make(chan Job)
+
+	go func() {
+		scanForJobs(stop, jobs, root)
+		close(jobs)
+	}()
+
+	for job := range jobs {
+		if err := worker.Process(job); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func TestScanAndProcess(t *testing.T) {
 	testcases := map[string][]testfile{
 		"NoJob": {
@@ -164,25 +183,13 @@ func TestScanAndProcess(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			root := tempDirFromTestFiles(t, testfiles)
 
-			// scan for jobs and feed to worker
-			stop := make(chan struct{})
-			defer close(stop)
-			jobs := make(chan Job)
-
-			go func() {
-				scanForJobs(stop, jobs, root)
-				close(jobs)
-			}()
-
 			uploader := newMockUploader()
 			worker := &Worker{
 				DeleteFilesOnSuccess: true,
 				Uploader:             uploader,
 			}
 
-			for job := range jobs {
-				worker.Process(job)
-			}
+			scanAndProcessDirOnce(worker, root)
 
 			// check that all expected uploads exist
 			uploads := make(map[pair]bool)
@@ -205,6 +212,7 @@ func TestScanAndProcess(t *testing.T) {
 				}
 			}
 
+			// check that files have been cleaned up
 			for k := range uploads {
 				if uploader.Uploads[k] {
 					if _, err := os.Stat(k.src); err == nil {
