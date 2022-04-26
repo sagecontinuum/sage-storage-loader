@@ -11,6 +11,10 @@ def random_node_id():
     return f"000000000000000{i}"
 
 
+def random_job_name():
+    return random.choice([None, "sage", "Pluginctl"])
+
+
 def random_task_name():
     id = random.randbytes(random.randint(1, 20)).hex()
     return f"task-{id}"
@@ -53,7 +57,13 @@ def add_random_item(data_dir):
 
     meta["labels"]["filename"] = random_filename()
 
-    dir = Path(data_dir, f"node-{random_node_id()}/uploads/{random_task_name()}/{random_version()}/{timestamp}-{shasum}")
+    job = random_job_name()
+
+    if job is None:
+        dir = Path(data_dir, f"node-{random_node_id()}/uploads/{random_task_name()}/{random_version()}/{timestamp}-{shasum}")
+    else:
+        dir = Path(data_dir, f"node-{random_node_id()}/uploads/{job}/{random_task_name()}/{random_version()}/{timestamp}-{shasum}")
+
     Path(dir, ".partial").mkdir(parents=True, exist_ok=True)
     
     Path(dir, ".partial", "data").write_bytes(data)
@@ -62,6 +72,8 @@ def add_random_item(data_dir):
     Path(dir, ".partial", "data").rename(Path(dir, "data"))
     Path(dir, ".partial", "meta").rename(Path(dir, "meta"))
     Path(dir, ".partial").rmdir()
+
+    print(dir)
 
 
 def main():
