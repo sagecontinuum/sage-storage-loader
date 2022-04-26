@@ -136,12 +136,12 @@ func TestScanAndProcess(t *testing.T) {
 			}
 
 			for k := range uploads {
-				if !uploader.uploads[k] {
+				if !uploader.Uploads[k] {
 					t.Fatalf("missing upload\nsrc: %s\ndst: %s", k.src, k.dst)
 				}
 			}
 
-			for k := range uploader.uploads {
+			for k := range uploader.Uploads {
 				if !uploads[k] {
 					t.Fatalf("unexpected upload\nsrc: %s\ndst: %s", k.src, k.dst)
 				}
@@ -154,12 +154,12 @@ type pair struct{ src, dst string }
 
 type MockUploader struct {
 	Error   error
-	uploads map[pair]bool
+	Uploads map[pair]bool
 }
 
 func NewMockUploader() *MockUploader {
 	return &MockUploader{
-		uploads: make(map[pair]bool),
+		Uploads: make(map[pair]bool),
 	}
 }
 
@@ -167,10 +167,6 @@ func (up *MockUploader) UploadFile(src, dst string, meta *MetaData) error {
 	if up.Error != nil {
 		return up.Error
 	}
-	up.uploads[pair{src, dst}] = true
+	up.Uploads[pair{src, dst}] = true
 	return nil
-}
-
-func (up *MockUploader) WasUploaded(src, dst string) bool {
-	return up.uploads[pair{src, dst}]
 }
