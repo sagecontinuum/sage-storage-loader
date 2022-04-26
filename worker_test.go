@@ -98,6 +98,7 @@ func TestScanAndProcess(t *testing.T) {
 
 	for name, files := range testcases {
 		t.Run(name, func(t *testing.T) {
+			// generate temp directory and write out all test files
 			root := filepath.Join(t.TempDir(), "data")
 
 			for _, file := range files {
@@ -110,6 +111,7 @@ func TestScanAndProcess(t *testing.T) {
 				}
 			}
 
+			// scan for jobs and feed to worker
 			stop := make(chan struct{})
 			defer close(stop)
 			jobs := make(chan Job)
