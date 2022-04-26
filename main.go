@@ -8,13 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
 )
 
 const DoneFilename = ".done"
@@ -96,43 +91,22 @@ func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) 
 	return jobs, errc
 }
 
-func mustGetS3Uploader() *S3FileUploader {
-	endpoint := mustGetenv("s3Endpoint")
-	accessKeyID := mustGetenv("s3accessKeyID")
-	secretAccessKey := mustGetenv("s3secretAccessKey")
-	bucket := mustGetenv("s3bucket")
-
-	region := "us-west-2"
-	//region := "us-east-1" // minio default
-	disableSSL := !strings.HasPrefix(endpoint, "https")
-	//log.Printf("HasPrefix: %t", strings.HasPrefix(s3Endpoint, "https"))
-	//log.Printf("disableSSL: %t", disableSSL)
-	//os.Exit(0)
-	//maxMemory = 32 << 20 // 32Mb
-
-	log.Printf("creating s3 session at %s@%s in bucket %s", accessKeyID, endpoint, bucket)
-
-	session, err := session.NewSession(&aws.Config{
-		Credentials:      credentials.NewStaticCredentials(accessKeyID, secretAccessKey, ""),
-		Endpoint:         aws.String(endpoint),
-		Region:           aws.String(region),
-		DisableSSL:       aws.Bool(disableSSL),
-		S3ForcePathStyle: aws.Bool(true),
-	})
-	if err != nil {
-		log.Fatalf("failed to create s3 session: %s", err.Error())
-	}
-
-	return &S3FileUploader{
-		Session: session,
-		Bucket:  bucket,
+func mustGetS3UploaderConfig() S3FileUploaderConfig {
+	return S3FileUploaderConfig{
+		Endpoint:        mustGetenv("s3Endpoint"),
+		AccessKeyID:     mustGetenv("s3accessKeyID"),
+		SecretAccessKey: mustGetenv("s3secretAccessKey"),
+		Bucket:          mustGetenv("s3bucket"),
+		Region:          "us-west-2",
 	}
 }
 
 func main() {
 	numWorkers := getEnvInt("workers", 1) // 10 suggested for production
-
 	log.Println("SAGE Uploader")
+
+	s3config := mustGetS3UploaderConfig()
+	log.Printf("using s3 at %s@%s in bucket %s", s3config.AccessKeyID, s3config.Endpoint, s3config.Bucket)
 
 	deleteFilesOnSuccess := getEnvBool("delete_files_on_success", true)
 
@@ -160,7 +134,10 @@ func main() {
 		go func() {
 			defer wg.Done()
 
-			uploader := mustGetS3Uploader()
+			uploader, err := NewS3FileUploader(s3config)
+			if err != nil {
+				log.Fatalf("failed to create s3 uploader: %s", err.Error())
+			}
 
 			worker := &Worker{
 				DeleteFilesOnSuccess: deleteFilesOnSuccess,

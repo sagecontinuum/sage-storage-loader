@@ -7,8 +7,10 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
@@ -18,18 +20,46 @@ type FileUploader interface {
 	UploadFile(src, dst string, meta *MetaData) error
 }
 
-type S3FileUploader struct {
-	Session *session.Session
-	Bucket  string
+type S3FileUploaderConfig struct {
+	Endpoint        string
+	Bucket          string
+	AccessKeyID     string
+	SecretAccessKey string
+	Region          string
 }
 
-func (up *S3FileUploader) UploadFile(src, dst string, meta *MetaData) error {
+type s3FileUploader struct {
+	config  S3FileUploaderConfig
+	session *session.Session
+}
+
+func NewS3FileUploader(config S3FileUploaderConfig) (*s3FileUploader, error) {
+	disableSSL := !strings.HasPrefix(config.Endpoint, "https")
+
+	session, err := session.NewSession(&aws.Config{
+		Credentials:      credentials.NewStaticCredentials(config.AccessKeyID, config.SecretAccessKey, ""),
+		Endpoint:         aws.String(config.Endpoint),
+		Region:           aws.String(config.Region),
+		DisableSSL:       aws.Bool(disableSSL),
+		S3ForcePathStyle: aws.Bool(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &s3FileUploader{
+		config:  config,
+		session: session,
+	}, nil
+}
+
+func (up *s3FileUploader) UploadFile(src, dst string, meta *MetaData) error {
 	contentMD5, err := computeContentBase64MD5(src)
 	if err != nil {
 		return err
 	}
 
-	uploader := s3manager.NewUploader(up.Session)
+	uploader := s3manager.NewUploader(up.session)
 	if uploader == nil {
 		return fmt.Errorf("could not create a new uploader")
 	}
@@ -43,7 +73,7 @@ func (up *S3FileUploader) UploadFile(src, dst string, meta *MetaData) error {
 	// Upload the file to S3.
 	// https://docs.aws.amazon.com/sdk-for-go/api/service/s3/s3manager/#Uploader
 	if _, err := uploader.Upload(&s3manager.UploadInput{
-		Bucket:     aws.String(up.Bucket),
+		Bucket:     aws.String(up.config.Bucket),
 		Key:        aws.String(dst),
 		Body:       f,
 		ContentMD5: aws.String(contentMD5),
