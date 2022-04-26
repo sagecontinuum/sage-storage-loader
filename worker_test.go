@@ -12,6 +12,68 @@ import (
 	"time"
 )
 
+func TestScanForJobs(t *testing.T) {
+	stop := make(chan struct{})
+	defer close(stop)
+	jobs := make(chan Job)
+
+	root := filepath.Join(t.TempDir(), "data")
+
+	files := []string{
+		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
+		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
+
+		"node-000048b02d15bc7c/uploads/Pluginctl/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
+		"node-000048b02d15bc7c/uploads/Pluginctl/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
+
+		"node-0000000000000001/uploads/no-meta/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
+
+		"node-0000000000000002/uploads/no-data/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
+
+		"node-0000000000000001/uploads/done/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
+		"node-0000000000000001/uploads/done/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
+		"node-0000000000000001/uploads/done/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/.done",
+	}
+
+	for _, file := range files {
+		path := filepath.Join(root, file)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte{}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	go func() {
+		scanForJobs(stop, jobs, root)
+		close(jobs)
+	}()
+
+	seen := make(map[Job]bool)
+
+	for job := range jobs {
+		seen[job] = true
+	}
+
+	wantDirs := []string{
+		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c",
+		"node-000048b02d15bc7c/uploads/Pluginctl/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c",
+	}
+
+	for _, dir := range wantDirs {
+		job := Job{Root: root, Dir: dir}
+		if !seen[job] {
+			t.Fatalf("missing job for %s", dir)
+		}
+		delete(seen, job)
+	}
+
+	for job := range seen {
+		t.Fatalf("got unexpected job: %+v", job)
+	}
+}
+
 func TestFuzzWorker(t *testing.T) {
 	testcases := randomWorkerTestCases(10)
 
