@@ -119,6 +119,8 @@ func mustGetS3Uploader() *S3FileUploader {
 	//os.Exit(0)
 	//maxMemory = 32 << 20 // 32Mb
 
+	log.Printf("creating s3 session at %s@%s in bucket %s", accessKeyID, endpoint, bucket)
+
 	session, err := session.NewSession(&aws.Config{
 		Credentials:      credentials.NewStaticCredentials(accessKeyID, secretAccessKey, ""),
 		Endpoint:         aws.String(endpoint),
@@ -166,7 +168,7 @@ func getEnvBool(key string, fallback bool) bool {
 
 func main() {
 	// TODO: add garbage collection/notifier if old files are not moved away
-	useS3 := false
+	useS3 := true
 
 	numWorkers := getEnvInt("workers", 1) // 10 suggested for production
 

@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -25,6 +26,9 @@ func (up *S3FileUploader) UploadFile(src, dst string, meta *MetaData) error {
 	}
 
 	uploader := s3manager.NewUploader(up.Session)
+	if uploader == nil {
+		return fmt.Errorf("could not create a new uploader")
+	}
 
 	f, err := os.Open(src)
 	if err != nil {
@@ -50,6 +54,9 @@ func (up *S3FileUploader) UploadFile(src, dst string, meta *MetaData) error {
 }
 
 func convertMetaToS3Metadata(meta *MetaData) map[string]string {
+	if meta == nil {
+		return nil
+	}
 	m := map[string]string{
 		"name": meta.Name,
 		"ts":   strconv.FormatInt(meta.Timestamp.UnixNano(), 10),
