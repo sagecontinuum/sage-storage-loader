@@ -65,9 +65,7 @@ func scanAndProcessDirOnce(worker *Worker, root string) error {
 	}()
 
 	for job := range jobs {
-		if err := worker.Process(job); err != nil {
-			return err
-		}
+		worker.Process(job)
 	}
 
 	return nil
