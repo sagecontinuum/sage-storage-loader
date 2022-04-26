@@ -101,20 +101,15 @@ func mustGetS3UploaderConfig() S3FileUploaderConfig {
 	}
 }
 
-func main() {
-	numWorkers := getEnvInt("workers", 1) // 10 suggested for production
-	log.Println("SAGE Uploader")
+type LoaderConfig struct {
+	RootDir              string
+	S3Config             S3FileUploaderConfig
+	DeleteFilesOnSuccess bool
+	NumWorkers           int
+}
 
-	s3config := mustGetS3UploaderConfig()
-	log.Printf("using s3 at %s@%s in bucket %s", s3config.AccessKeyID, s3config.Endpoint, s3config.Bucket)
-
-	deleteFilesOnSuccess := getEnvBool("delete_files_on_success", true)
-
-	// dataRoot := getEnvString("data_dir", "/data")
-	dataRoot := getEnvString("data_dir", "test-data")
-
+func ScanAndProcessDir(config LoaderConfig) error {
 	stop := make(chan struct{})
-
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	go func() {
@@ -123,24 +118,24 @@ func main() {
 		close(stop)
 	}()
 
-	jobs, errc := fillJobQueue(stop, dataRoot)
+	jobs, errc := fillJobQueue(stop, config.RootDir)
 
 	results := make(chan string)
 
 	var wg sync.WaitGroup
-	wg.Add(numWorkers)
+	wg.Add(config.NumWorkers)
 
-	for i := 0; i < numWorkers; i++ {
+	for i := 0; i < config.NumWorkers; i++ {
 		go func() {
 			defer wg.Done()
 
-			uploader, err := NewS3FileUploader(s3config)
+			uploader, err := NewS3FileUploader(config.S3Config)
 			if err != nil {
 				log.Fatalf("failed to create s3 uploader: %s", err.Error())
 			}
 
 			worker := &Worker{
-				DeleteFilesOnSuccess: deleteFilesOnSuccess,
+				DeleteFilesOnSuccess: config.DeleteFilesOnSuccess,
 				Uploader:             uploader,
 				Jobs:                 jobs,
 				Results:              results,
@@ -161,9 +156,23 @@ func main() {
 
 	select {
 	case err := <-errc:
-		if err != nil {
-			log.Printf("error: %s", err.Error())
-		}
+		return err
 	default:
+		return nil
+	}
+}
+
+func main() {
+	config := LoaderConfig{
+		NumWorkers:           getEnvInt("workers", 1),
+		DeleteFilesOnSuccess: getEnvBool("delete_files_on_success", true),
+		RootDir:              getEnvString("data_dir", "test-data"),
+		S3Config:             mustGetS3UploaderConfig(),
+	}
+
+	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)
+
+	if err := ScanAndProcessDir(config); err != nil {
+		log.Fatalf("loader stopped: %s", err.Error())
 	}
 }
