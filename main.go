@@ -41,7 +41,7 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 				log.Fatalf("bad glob pattern: %s", err.Error())
 			}
 			if !ok {
-				return nil
+				continue
 			}
 
 			dir := filepath.Dir(path)
@@ -168,7 +168,7 @@ func getEnvBool(key string, fallback bool) bool {
 
 func main() {
 	// TODO: add garbage collection/notifier if old files are not moved away
-	useS3 := true
+	useS3 := false
 
 	numWorkers := getEnvInt("workers", 1) // 10 suggested for production
 

@@ -1,10 +1,65 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestFuzzWorker(t *testing.T) {
+	testcases := randomWorkerTestCases(10)
+
+	var jobs []Job
+
+	root := filepath.Join(t.TempDir(), "data")
+
+	for _, tc := range testcases {
+		if err := tc.WriteFiles(root); err != nil {
+			t.Fatal(err)
+		}
+		jobs = append(jobs, Job{Root: root, Dir: tc.Dir()})
+	}
+
+	// actuall use the scanForJobs here... to bind what we check to reality
+
+	// process all the jobs
+	uploader := NewMockUploader()
+	worker := &Worker{Uploader: uploader}
+
+	for _, job := range jobs {
+		if err := worker.Process(job); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// check that exactly these items were uploaded
+	for _, tc := range testcases {
+		dir := tc.Dir()
+
+		dataSrc := filepath.Join(root, dir, "data")
+		dataDst := filepath.Join("node-data", "sage", fmt.Sprintf("sage-%s-%s", tc.Task, tc.Version), tc.Node, fmt.Sprintf("%d-%s", tc.Timestamp.UnixNano(), tc.Filename))
+
+		metaSrc := filepath.Join(root, dir, "meta")
+		metaDst := dataDst + ".meta"
+
+		if !uploader.WasUploaded(dataSrc, dataDst) {
+			t.Fatalf("missing upload\nsrc: %s\ndst: %s", dir, dataDst)
+		}
+
+		if !uploader.WasUploaded(metaSrc, metaDst) {
+			t.Fatalf("missing upload\nsrc: %s\ndst: %s", dir, metaDst)
+		}
+	}
+}
+
+// dir: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c",
+// dst: "node-data/sage/sage-imagesampler-top-0.2.5/000048b02d15bc7c/1638576647406523064-wow1.txt",
 
 func TestWorkerProcess(t *testing.T) {
 	testcases := map[string]struct {
@@ -123,7 +178,7 @@ func newTempDir(t *testing.T) string {
 
 	items := map[string][]byte{
 		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte(`testing`),
-		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"timestamp":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
 
 		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.6/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data": []byte("testing"),
 		"node-000048b02d15bc7c/uploads/imagesampler-top/0.2.6/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta": []byte(`{"timestamp":1638576647406523064,"labels":{"filename":"wow2.txt"}}`),
@@ -144,6 +199,113 @@ func newTempDir(t *testing.T) string {
 	}
 
 	return root
+}
+
+type workerTestCase struct {
+	Node      string
+	Job       string
+	Task      string
+	Version   string
+	Timestamp time.Time
+	Filename  string
+	Data      []byte
+}
+
+func (tc *workerTestCase) Dir() string {
+	return filepath.Join("node-"+tc.Node, "uploads", tc.Task, tc.Version, fmt.Sprintf("%d-%s", tc.Timestamp.UnixNano(), tc.shastr()))
+}
+
+func (tc *workerTestCase) WriteFiles(root string) error {
+	dir := tc.Dir()
+
+	// write data file
+	if err := tc.writeDataFile(filepath.Join(root, dir, "data")); err != nil {
+		return err
+	}
+
+	// write meta file
+	if err := tc.writeMetaFile(filepath.Join(root, dir, "meta")); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (tc *workerTestCase) writeDataFile(name string) error {
+	if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(name, tc.Data, 0o644)
+}
+
+func (tc *workerTestCase) writeMetaFile(name string) error {
+	if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		return err
+	}
+
+	meta := struct {
+		Timestamp int64             `json:"ts"`
+		Shasum    string            `json:"shasum"`
+		Meta      map[string]string `json:"labels"`
+	}{
+		Timestamp: tc.Timestamp.UnixNano(),
+		Shasum:    tc.shastr(),
+		Meta: map[string]string{
+			"filename": tc.Filename,
+		},
+	}
+
+	f, err := os.Create(name)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return json.NewEncoder(f).Encode(meta)
+}
+
+func (tc *workerTestCase) shastr() string {
+	shasum := sha1.Sum(tc.Data)
+	return hex.EncodeToString(shasum[:])
+}
+
+func randomWorkerTestCases(n int) []*workerTestCase {
+	var testcases []*workerTestCase
+	for i := 0; i < n; i++ {
+		testcases = append(testcases, randomWorkerTestCase())
+	}
+	return testcases
+}
+
+func randomWorkerTestCase() *workerTestCase {
+	return &workerTestCase{
+		Timestamp: time.Now(),
+		Node:      randomNode(),
+		Task:      randomTask(),
+		Filename:  randomFilename(),
+		Version:   randomVersion(),
+		Data:      randomData(),
+	}
+}
+
+func randomNode() string {
+	return fmt.Sprintf("%016x", rand.Intn(10))
+}
+
+func randomTask() string {
+	return fmt.Sprintf("task-%d", rand.Intn(1000))
+}
+
+func randomFilename() string {
+	return "filename.txt"
+}
+
+func randomVersion() string {
+	return fmt.Sprintf("%d.%d.%d", rand.Intn(10), rand.Intn(10), rand.Intn(10))
+}
+
+func randomData() []byte {
+	return []byte{1, 2, 3}
 }
 
 type pair struct{ src, dst string }
