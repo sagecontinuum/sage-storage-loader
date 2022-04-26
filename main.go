@@ -91,23 +91,6 @@ func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) 
 	return jobs, errc
 }
 
-func mustGetS3UploaderConfig() S3FileUploaderConfig {
-	return S3FileUploaderConfig{
-		Endpoint:        mustGetenv("s3Endpoint"),
-		AccessKeyID:     mustGetenv("s3accessKeyID"),
-		SecretAccessKey: mustGetenv("s3secretAccessKey"),
-		Bucket:          mustGetenv("s3bucket"),
-		Region:          "us-west-2",
-	}
-}
-
-type LoaderConfig struct {
-	RootDir              string
-	S3Config             S3FileUploaderConfig
-	DeleteFilesOnSuccess bool
-	NumWorkers           int
-}
-
 func ScanAndProcessDir(config LoaderConfig) error {
 	stop := make(chan struct{})
 	sig := make(chan os.Signal, 1)
@@ -159,6 +142,23 @@ func ScanAndProcessDir(config LoaderConfig) error {
 		return err
 	default:
 		return nil
+	}
+}
+
+type LoaderConfig struct {
+	RootDir              string
+	S3Config             S3FileUploaderConfig
+	DeleteFilesOnSuccess bool
+	NumWorkers           int
+}
+
+func mustGetS3UploaderConfig() S3FileUploaderConfig {
+	return S3FileUploaderConfig{
+		Endpoint:        mustGetenv("s3Endpoint"),
+		AccessKeyID:     mustGetenv("s3accessKeyID"),
+		SecretAccessKey: mustGetenv("s3secretAccessKey"),
+		Bucket:          mustGetenv("s3bucket"),
+		Region:          "us-west-2",
 	}
 }
 
