@@ -167,9 +167,6 @@ func getEnvBool(key string, fallback bool) bool {
 }
 
 func main() {
-	// TODO: add garbage collection/notifier if old files are not moved away
-	useS3 := false
-
 	numWorkers := getEnvInt("workers", 1) // 10 suggested for production
 
 	log.Println("SAGE Uploader")
@@ -200,14 +197,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 
-			// setup worker's uploader
-			var uploader FileUploader
-
-			if useS3 {
-				uploader = mustGetS3Uploader()
-			} else {
-				uploader = &LogFileUploader{}
-			}
+			uploader := mustGetS3Uploader()
 
 			worker := &Worker{
 				DeleteFilesOnSuccess: deleteFilesOnSuccess,
