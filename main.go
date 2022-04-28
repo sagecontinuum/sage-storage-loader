@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -17,10 +18,13 @@ var (
 	errWalkDirStopped = errors.New("walk stopped")
 )
 
+const versionPattern = "[0-9]*.[0-9]*.[0-9]*"
+const timeShasumPattern = "[0-9]*-[0-9a-f]*"
+
 func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 	patterns := []string{
-		filepath.Join(root, "node-*", "uploads", "*", "*", "*", "data"),      // uploads without a namespace
-		filepath.Join(root, "node-*", "uploads", "*", "*", "*", "*", "data"), // uploads with a namespace
+		filepath.Join(root, "node-*", "uploads", "*", versionPattern, timeShasumPattern, "data"),      // uploads without a namespace
+		filepath.Join(root, "node-*", "uploads", "*", "*", versionPattern, timeShasumPattern, "data"), // uploads with a namespace
 	}
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -28,6 +32,10 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 		case <-stop:
 			return errWalkDirStopped
 		default:
+		}
+
+		if strings.HasPrefix(filepath.Base(path), ".") {
+			return fs.SkipDir
 		}
 
 		for _, pattern := range patterns {

@@ -17,9 +17,9 @@ type Job struct {
 type Worker struct {
 	Uploader             FileUploader
 	DeleteFilesOnSuccess bool
-	Jobs                 <-chan Job
-	Results              chan<- string
-	Stop                 <-chan struct{}
+	Jobs                 <-chan Job      // job inputs from pipeline
+	Results              chan<- string   // result outputs to pipeline
+	Stop                 <-chan struct{} // shared pipeline stop signal
 }
 
 type MetaData struct {

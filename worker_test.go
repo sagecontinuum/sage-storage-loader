@@ -73,7 +73,7 @@ func scanAndProcessDirOnce(worker *Worker, root string) error {
 
 func TestScanAndProcess(t *testing.T) {
 	testcases := map[string][]testfile{
-		"NoJob": {
+		"DefaultSageJob": {
 			{
 				path:   "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
 				upload: "node-data/sage/sage-imagesampler-top-0.2.5/000048b02d15bc7c/1638576647406523064-wow1.txt",
@@ -173,6 +173,78 @@ func TestScanAndProcess(t *testing.T) {
 			{
 				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
 				data: []byte(`{"ts":1638576647406523064,"labels":{}}`),
+			},
+		},
+		"SkipPartial": {
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/.partial/data",
+				data: []byte(`some data`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/.partial/meta",
+				data: []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+			},
+		},
+		"SkipExtra": {
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/dir/data",
+				data: []byte(`some data`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/dir/meta",
+				data: []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+			},
+		},
+		"SkipMissing": {
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/data",
+				data: []byte(`some data`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/meta",
+				data: []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/data",
+				data: []byte(`some data`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/meta",
+				data: []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/data",
+				data: []byte(`some data`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/meta",
+				data: []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+			},
+			{
+				path: "node-000048b02d15bc7c/data",
+				data: []byte(`some data`),
+			},
+			{
+				path: "node-000048b02d15bc7c/meta",
+				data: []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+			},
+			{
+				path: "data",
+				data: []byte(`some data`),
+			},
+			{
+				path: "meta",
+				data: []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+			},
+		},
+		"SkipNonUploadsRoot": {
+			{
+				path: "node-000048b02d15bc7c/uploads-copy/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
+				data: []byte(`some data`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads-copy/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
+				data: []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
 			},
 		},
 	}
