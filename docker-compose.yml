@@ -1,0 +1,33 @@
+# intended for local testing only, not deployment to production
+services:
+  loader:
+    build: .
+    environment:
+      - LOADER_DATA_DIR=/home-dirs
+      - LOADER_S3_ENDPOINT=http://minio:9000
+      - LOADER_S3_ACCESS_KEY_ID=admin
+      - LOADER_S3_SECRET_ACCESS_KEY=password
+      - LOADER_S3_BUCKET=node-data
+      - LOADER_NUM_WORKERS=3
+    volumes:
+      - "./test-data:/home-dirs"
+
+  minio:
+    image: minio/minio
+    command: [ "server", "/data", "--console-address", ":9001" ]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+
+  setup_bucket:
+    image: minio/mc
+    depends_on:
+      - minio
+    restart: on-failure
+    entrypoint: |
+      /bin/sh -c '
+      mc alias set minio http://minio:9000 admin password && mc mb minio/node-data && mc policy set public minio/node-data
+      '

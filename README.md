@@ -1,10 +1,27 @@
-# sage-storage-loader
-Load files from filesystem into SAGE object store
+# Sage Storage Loader
 
+This service loads files staged in a directory (on Beehive) into OSN.
 
-This uploader load files from the beehive filesystem to an S3 bucket. Nodes upload large files via rsync to beehive and the the files are cached on the beehive filesystem. This loader checks the upload directrory for new files and uploads them (using mulitiple worker processes) to S3.
+The expected data flow is:
 
+```txt
+          rsync uploads                   sage storage loader
+[ node ] --------------> [ staging dir ] --------------------> [ osn ]
+```
 
+# Architecture
+
+```txt
+       scanner process walks staging dir
+       and puts ready uploads into channel
+
+                                          +--> [ worker ] --> [     ]
+[ staging dir ] -----------> [|||] -------+--> [ worker ] --> [ osn ]
+                                          +--> [ worker ] --> [     ]
+
+                                        workers upload files to osn
+                                        and clean them up afterwards
+```
 
 # Development
 

@@ -3,373 +3,204 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
 )
 
+type Job struct {
+	Root string
+	Dir  string
+}
+
 type Worker struct {
-	ID        int
-	Skipped   int64
-	wg        *sync.WaitGroup
-	jobQueue  <-chan Job
-	broadcast <-chan string
+	Uploader               FileUploader
+	DeleteFilesAfterUpload bool
+	Jobs                   <-chan Job      // job inputs from pipeline
+	Results                chan<- string   // result outputs to pipeline
+	Stop                   <-chan struct{} // shared pipeline stop signal
 }
 
 type MetaData struct {
-	Name         string                 `json:"name"` // always set as "upload"
-	EpochNano    int64                  `json:"ts,omitempty"`
-	EpochNanoOld *int64                 `json:"timestamp,omitempty"` // only for reading (deprecated soon), keep it backwards compatible
-	Shasum       *string                `json:"shasum,omitempty"`
-	Labels       map[string]interface{} `json:"labels,omitempty"` // only read (will write to meta)
-	Meta         map[string]interface{} `json:"meta"`
-	Value        string                 `json:"val"` // only used to output URL, input is assumed to be empty
+	Name      string
+	Timestamp time.Time
+	Shasum    *string
+	Meta      map[string]string
+	Value     string
 }
 
-// ErrorStruct _
-type ErrorStruct struct {
-	Error string `json:"error,omitempty"`
-}
-
-var sage_storage_api = "http://host.docker.internal:8080"
-var sage_storage_token = "user:test"
-var sage_storage_username = "test"
-
-func (worker *Worker) Run() {
-	defer worker.wg.Done()
-	fmt.Printf("Worker %d starting\n", worker.ID)
-
-FOR:
-	for {
-		// by splitting this into two selects, is is guaranteed that the broadcast is not skipped
-		select {
-		case signal := <-broadcast:
-			if signal == "STOP" {
-				fmt.Printf("Worker %d received STOP signal.\n", worker.ID)
-				break FOR
-			}
-		default:
-		}
-
-		select {
-		case job := <-jobQueue:
-			err := processing(worker.ID, job)
-			if err != nil {
-				log.Printf("Somthing went wrong: %s", err.Error())
-				index.Set(string(job), Failed, "worker")
-				err = nil
-			} else {
-				index.Set(string(job), Done, "worker")
-			}
-
-		default:
-			// there is no work, slow down..
-			time.Sleep(time.Second)
-		}
-	}
-	fmt.Printf("Worker %d stopping.\n", worker.ID)
-}
-
-type pInfo struct {
+type UploadInfo struct {
 	NodeID    string
 	Namespace string
 	Name      string
 	Version   string
 }
 
-func parseUploadPath(dir string) (p *pInfo, err error) {
+func (worker *Worker) Run() {
+	for job := range worker.Jobs {
+		var result string
 
-	p = &pInfo{}
-	dir_array := strings.Split(dir, "/")
+		if err := worker.Process(job); err != nil {
+			result = fmt.Sprintf("job error: %+v %s", job, err.Error())
+		} else {
+			result = fmt.Sprintf("job ok: %+v", job)
+		}
 
-	p.NodeID = strings.TrimPrefix(dir_array[0], "node-")
-	p.Namespace = "sage" // sage is the default in cases where no namespace was given
-	p.Name = ""
-	p.Version = ""
-	if len(dir_array) == 6 {
-		p.Namespace = dir_array[2]
-		p.Name = dir_array[3]
-		p.Version = dir_array[4]
-	} else if len(dir_array) == 5 { // namespace is missing
-		p.Name = dir_array[2]
-		p.Version = dir_array[3]
-	} else {
-		err = fmt.Errorf("could not parse path %s", dir)
-		return
+		select {
+		case worker.Results <- result:
+		case <-worker.Stop:
+			return
+		}
 	}
-
-	return
 }
 
-func getMetadata(full_dir string) (m *MetaData, err error) {
-	var content []byte
-	content, err = ioutil.ReadFile(filepath.Join(full_dir, "meta"))
-	if err != nil {
-		err = fmt.Errorf("ioutil.ReadFile failed: %s", err.Error())
-		return
+func parseUploadPath(dir string) (*UploadInfo, error) {
+	fields := strings.Split(dir, "/")
+
+	p := &UploadInfo{
+		NodeID:    strings.TrimPrefix(fields[0], "node-"),
+		Namespace: "sage", // sage is the default in cases where no namespace was given
+		Name:      "",
+		Version:   "",
 	}
 
-	meta := MetaData{}
-	err = json.Unmarshal(content, &meta)
-	if err != nil {
-		err = fmt.Errorf("parsing metdata failed: %s (%s)", err.Error(), string(content))
-		return
+	switch len(fields) {
+	case 6:
+		p.Namespace = fields[2]
+		p.Name = fields[3]
+		p.Version = fields[4]
+	case 5: // namespace is missing
+		p.Name = fields[2]
+		p.Version = fields[3]
+	default:
+		return nil, fmt.Errorf("could not parse path %s", dir)
 	}
-	m = &meta
-	return
+
+	return p, nil
 }
 
-func processing(id int, job Job) (err error) {
-	fmt.Printf("Worker %d: processing job %s\n", id, string(job))
-	dir := string(job) // starts with  node-000048b02d...
-	full_dir := filepath.Join(dataDirectory, dir)
-
-	// if !delete_files_on_success {
-	// 	if _, err = os.Stat(flag_file); err == nil {
-	// 		// already exists
-	// 		//fmt.Printf("Worker %d: Flag file found, skipping upload.\n", id)
-	// 		return
-	// 	}
-	// }
-
-	err = nil
-
-	var p *pInfo
-	p, err = parseUploadPath(dir)
+func (w *Worker) Process(job Job) error {
+	p, err := parseUploadPath(job.Dir)
 	if err != nil {
-		return
+		return err
 	}
 
-	//fmt.Printf("Worker %d: got node_id %s\n", id, p.NodeID)
-	//fmt.Printf("Worker %d: got plugin_namespace %s\n", id, p.Namespace)
-	//fmt.Printf("Worker %d: got plugin_name %s\n", id, p.Name)
-	//fmt.Printf("Worker %d: got plugin_version %s\n", id, p.Version)
+	dataPath := filepath.Join(job.Root, job.Dir, "data")
+	metaPath := filepath.Join(job.Root, job.Dir, "meta")
+	donePath := filepath.Join(job.Root, job.Dir, DoneFilename)
 
-	var meta *MetaData
-	meta, err = getMetadata(full_dir)
-	if err != nil {
-		return
+	var meta MetaData
+
+	if err := readMetaFile(metaPath, &meta); err != nil {
+		return err
 	}
 
-	meta.Name = "upload"
-	//spew.Dump(meta)
-
-	//fmt.Printf("Worker %d: got shasum %s\n", id, *meta.Shasum)
-	if meta.EpochNanoOld != nil {
-		meta.EpochNano = *meta.EpochNanoOld
-		meta.EpochNanoOld = nil
-	}
-	//fmt.Printf("Worker %d: got EpochNano %d\n", id, meta.EpochNano)
-
-	//spew.Dump(meta)
-	if meta.Meta == nil { // read Labels only if Meta is empty
-		meta.Meta = meta.Labels
-		meta.Labels = nil
-	}
-	meta.Shasum = nil
-	//spew.Dump(meta)
-
-	labelFilenameIf, ok := meta.Meta["filename"]
-	if !ok {
-		err = fmt.Errorf("label field  filename is missing")
-		return
-	}
-
-	labelFilename, ok := labelFilenameIf.(string)
-	if !ok {
-		err = fmt.Errorf("label field filename is not a string")
-		return
-	}
-	if len(labelFilename) == 0 {
-		err = fmt.Errorf("label field filename is empty")
-		return
-	}
-
-	// add info extracted from path
+	// Add info extracted from path.
 	meta.Meta["node"] = strings.ToLower(p.NodeID)
+	// TODO(sean) reconcile namespace and job usage
 	meta.Meta["plugin"] = p.Namespace + "/" + p.Name + ":" + p.Version
 
-	timestamp := time.Unix(meta.EpochNano/1e9, meta.EpochNano%1e9)
-	//fmt.Printf("Worker %d: got timestamp %s\n", id, timestamp)
+	labelFilename := meta.Meta["filename"]
+	targetNameData := fmt.Sprintf("%d-%s", meta.Timestamp.UnixNano(), labelFilename)
+	targetNameMeta := fmt.Sprintf("%d-%s.meta", meta.Timestamp.UnixNano(), labelFilename)
+	s3path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
 
-	timestamp_date := timestamp.Format("20060201")
-
-	if false {
-		bucket_name := fmt.Sprintf("%s-%s-%s-%s-%s", p.NodeID, p.Namespace, p.Name, p.Version, timestamp_date)
-		log.Printf("bucket_name: %s", bucket_name)
-		bucket_id := ""
-		bucket_id, err = getOrCreateBucket(bucket_name)
-		if err != nil {
-			err = fmt.Errorf("getOrCreateBucket failed: %s", err.Error())
-			return
-		}
-
-		log.Printf("bucket_id: %s", bucket_id)
+	if err := w.Uploader.UploadFile(dataPath, filepath.Join(s3path, targetNameData), &meta); err != nil {
+		return err
 	}
-	//bucket_id := ""
 
-	uploadTarget := "s3"
+	if err := w.Uploader.UploadFile(metaPath, filepath.Join(s3path, targetNameMeta), nil); err != nil {
+		return err
+	}
 
-	targetNameData := fmt.Sprintf("%d-%s", meta.EpochNano, labelFilename)
-	targetNameMeta := fmt.Sprintf("%d-%s.meta", meta.EpochNano, labelFilename)
+	if err := os.WriteFile(donePath, []byte{}, 0o644); err != nil {
+		return fmt.Errorf("could not create flag file: %s", err.Error())
+	}
 
-	dataFileLocal := filepath.Join(full_dir, "data")
-	metaFileLocal := filepath.Join(full_dir, "meta")
-
-	//TODO:  rootFolder via config ,  jobID and instanceID(task) from json
-
-	rootFolder := "node-data"
-	jobID := "sage"
-	instanceID := p.Namespace + "-" + p.Name + "-" + p.Version
-	//outputID := "default"
-	s3path := fmt.Sprintf("%s/%s/%s/%s", rootFolder, jobID, instanceID, p.NodeID)
-
-	var s3metadata map[string]string
-	skipUpload := false
-	if uploadTarget == "s3" {
-
-		s3metadata = make(map[string]string)
-
-		s3metadata["name"] = meta.Name
-		s3metadata["ts"] = strconv.FormatInt(meta.EpochNano, 10)
-		if meta.Shasum != nil {
-			s3metadata["shasum"] = *meta.Shasum
-		}
-		//s3metadata["val"] = meta.Value
-
-		for key, value := range meta.Meta {
-
-			value_str, ok := value.(string)
-			if ok {
-				s3metadata["meta."+key] = value_str
-			} else {
-				fmt.Printf("Did not add metdata %s", key)
+	// TODO(sean) If we see the need to support various clean up strategies,
+	// we should just make this step plugable. For example, maybe instead of
+	// deleting, we want to move files to a done directory.
+	if w.DeleteFilesAfterUpload {
+		// Clean up data, meta and done files.
+		for _, name := range []string{dataPath, metaPath, donePath} {
+			if err := os.Remove(name); err != nil {
+				return fmt.Errorf("failed to clean up %s", name)
 			}
 		}
 
-		if !PretendUpload {
-			s3key := filepath.Join(s3path, targetNameData)
-
-			// check and skip if file exists
-			input := &s3.ListObjectsV2Input{
-				Bucket:  aws.String(s3bucket),
-				Prefix:  aws.String(s3key),
-				MaxKeys: aws.Int64(2),
-			}
-
-			var result *s3.ListObjectsV2Output
-			result, err = svc.ListObjectsV2(input)
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); ok {
-					switch aerr.Code() {
-					case s3.ErrCodeNoSuchBucket:
-						fmt.Println(s3.ErrCodeNoSuchBucket, aerr.Error())
-					default:
-						fmt.Println(aerr.Error())
-					}
-				} else {
-					// Print the error, cast err to awserr.Error to get the Code and
-					// Message from an error.
-					fmt.Println(err.Error())
-				}
-				err = nil
-			} else {
-
-				//fmt.Println(result)
-
-				if len(result.Contents) == 2 {
-					fmt.Println("Files already exist in S3")
-					skipUpload = true
-				}
+		// Attempt to clean up parent directories up to root/node-xyz/uploads.
+		//
+		// NOTE(sean) There is a possible race condition with the upload agent here.
+		//
+		// It's possible that the upload agent creates the parent paths which are removed
+		// before we can upload. In this case, that particular rsync will fail and then
+		// will be tried again later.
+		//
+		// In order for this to happen, the OSN loader would have to upload and clean up the
+		// last staged item for a task right when that task is posting a new upload. This seems
+		// potentially rare enough that I'd opt for simpler, more robust cleanup logic for now.
+		for p := filepath.Dir(dataPath); filepath.Base(p) != "uploads"; p = filepath.Dir(p) {
+			if err := os.Remove(p); err != nil {
+				break
 			}
 		}
 	}
 
-	if !skipUpload {
-		var sageFileUrl string
-		sageFileUrl, err = uploadFile(uploadTarget, s3path, dataFileLocal, targetNameData, s3metadata)
-		if err != nil {
-			return
-		}
-
-		_, err = uploadFile(uploadTarget, s3path, metaFileLocal, targetNameMeta, nil)
-		if err != nil {
-			return
-		}
-
-		fmt.Printf("upload success: %s %s (and .meta)\n", s3path, targetNameData)
-
-		meta.Value = sageFileUrl
-
-		if send_rmq_message {
-			//send message
-			var jsonBytes []byte
-			jsonBytes, err = json.Marshal(meta)
-			if err != nil {
-				return
-			}
-
-			// ToLower should not be needed, just to be safe
-			err = send_amqp_message("node-"+strings.ToLower(p.NodeID), jsonBytes)
-			if err != nil {
-				return
-			}
-			fmt.Printf("RMQ message sent %s\n", sageFileUrl)
-		}
-	}
-	// *** delete files
-	if delete_files_on_success {
-		err = os.RemoveAll(full_dir)
-		if err != nil {
-			err = fmt.Errorf("can not delete directory (%s): %s", full_dir, err.Error())
-			return
-		}
-	} else {
-
-		flag_file := filepath.Join(full_dir, "done")
-
-		var emptyFlagFile *os.File
-		emptyFlagFile, err = os.Create(flag_file)
-		if err != nil {
-			err = fmt.Errorf("could not create flag file: %s", err.Error())
-			return
-
-		}
-		//log.Println(emptyFile)
-		emptyFlagFile.Close()
-
-	}
-
-	return
+	return nil
 }
 
-func run_command(cmd_str string, return_stdout bool) (output string, err error) {
-
-	//cmd_str := strings.Join(cmd_array, " ")
-	log.Printf("Command execute: %s", cmd_str)
-
-	//cmd := exec.Command(cmd_array[0], cmd_array[1:len(cmd_array)-1]...)
-	cmd := exec.Command("bash", "-c", cmd_str)
-
-	var output_b []byte
-	output_b, err = cmd.CombinedOutput()
-
-	if err != nil {
-		err = fmt.Errorf("exec.Command failed: %s", err.Error())
-		return
+func readMetaFile(name string, m *MetaData) error {
+	var data struct {
+		EpochNano    *int64            `json:"ts"`
+		EpochNanoOld *int64            `json:"timestamp"` // only for reading (deprecated soon), keep it backwards compatible
+		Shasum       *string           `json:"shasum"`
+		Meta         map[string]string `json:"meta"`
+		MetaOld      map[string]string `json:"labels"` // only read (will write to meta)
 	}
-	output = string(output_b[:])
 
-	return
+	if err := readJSONFile(name, &data); err != nil {
+		return err
+	}
 
+	m.Name = "upload"
+
+	// detect timestamp
+	switch {
+	case data.EpochNano != nil:
+		m.Timestamp = time.Unix(0, *data.EpochNano)
+	case data.EpochNanoOld != nil:
+		m.Timestamp = time.Unix(0, *data.EpochNanoOld)
+	default:
+		return fmt.Errorf("meta file is missing timestamp")
+	}
+
+	// detect meta
+	switch {
+	case data.Meta != nil:
+		m.Meta = data.Meta
+	case data.MetaOld != nil:
+		m.Meta = data.MetaOld
+	default:
+		return fmt.Errorf("meta file is missing meta fields")
+	}
+
+	if m.Meta["filename"] == "" {
+		return fmt.Errorf("filename metadata must exist and be nonempty")
+	}
+
+	if data.Shasum != nil {
+		m.Shasum = data.Shasum
+	}
+
+	return nil
+}
+
+func readJSONFile(name string, v interface{}) error {
+	f, err := os.Open(name)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return json.NewDecoder(f).Decode(v)
 }
