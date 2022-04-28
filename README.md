@@ -39,4 +39,4 @@ Test uploads can be generated using `tools/generate-data-dir.py`.
 python3 tools/generate-data-dir.py 100
 ```
 
-You can open the Minio UI at [http://localhost:9000](http://localhost:9000).
+You can open the Minio UI at [http://localhost:9001](http://localhost:9001).
