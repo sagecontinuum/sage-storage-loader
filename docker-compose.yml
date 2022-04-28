@@ -1,0 +1,19 @@
+services:
+  minio:
+    image: minio/minio
+    command: [ "server", "/data", "--console-address", ":9001" ]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+  loader:
+    build: .
+    environment:
+      - s3Endpoint=http://minio:9000
+      - s3accessKeyID=admin
+      - s3secretAccessKey=password
+      - s3bucket=test-data
+    volumes:
+      - "./test-data:/home-dirs"
