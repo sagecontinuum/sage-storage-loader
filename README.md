@@ -23,32 +23,20 @@ The expected data flow is:
                                         and clean them up afterwards
 ```
 
-# Development
+# Integration testing with Minio
 
-MinIO instance from [https://github.com/sagecontinuum/sage-storage-api](https://github.com/sagecontinuum/sage-storage-api) can be used for testing.
+We can stand up an integration testing environment using Docker Compose:
 
-
-```console
-docker build -t waggle/sage-uploader .
-docker run -ti --rm --env-file ./.env -v ${PWD}/temp:/data  waggle/sage-uploader
+```sh
+docker-compose up -d --build
+docker-compose logs -f
 ```
 
-# Dev RMQ  ( not used anymore ? )
+Test uploads can be generated using `tools/generate-data-dir.py`.
 
-```console
-./create_certs.sh
+```sh
+# generate 100 test uploads into the default test-data dir
+python3 tools/generate-data-dir.py 100
 ```
 
-
-```console
-docker run -ti --name beehive-rabbitmq --rm -v ${PWD}/temp/ca/:/etc/ca/ -v ${PWD}/temp/rmq/:/etc/tls/ -v ${PWD}/rabbitmq:/etc/rabbitmq  --env RABBITMQ_DEFAULT_USER=test --env RABBITMQ_DEFAULT_PASS=test -p 5671:5671 -p 8081:15672 rabbitmq:3.8.11-management-alpine
-```
-
-create exchange and users
-```console
-./config_test_rabbitmq.sh
-```
-
-management UI:
-[http://localhost:8081](http://localhost:8081)
-
+You can open the Minio UI at [http://localhost:9000](http://localhost:9000).
