@@ -163,19 +163,19 @@ type LoaderConfig struct {
 
 func mustGetS3UploaderConfig() S3FileUploaderConfig {
 	return S3FileUploaderConfig{
-		Endpoint:        mustGetenv("s3Endpoint"),
-		AccessKeyID:     mustGetenv("s3accessKeyID"),
-		SecretAccessKey: mustGetenv("s3secretAccessKey"),
-		Bucket:          mustGetenv("s3bucket"),
+		Endpoint:        mustGetEnv("s3Endpoint"),
+		AccessKeyID:     mustGetEnv("s3accessKeyID"),
+		SecretAccessKey: mustGetEnv("s3secretAccessKey"),
+		Bucket:          mustGetEnv("s3bucket"),
 		Region:          "us-west-2",
 	}
 }
 
 func main() {
 	config := LoaderConfig{
-		NumWorkers:           getEnvInt("workers", 1),
-		DeleteFilesOnSuccess: getEnvBool("delete_files_on_success", true),
-		RootDir:              getEnvString("data_dir", "test-data"),
+		NumWorkers:           mustParseInt(getEnv("workers", "1")),
+		DeleteFilesOnSuccess: mustParseBool(getEnv("delete_files_on_success", "true")),
+		RootDir:              getEnv("data_dir", "test-data"),
 		S3Config:             mustGetS3UploaderConfig(),
 	}
 

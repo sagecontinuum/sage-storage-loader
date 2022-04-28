@@ -7,7 +7,14 @@ import (
 	"strings"
 )
 
-func mustGetenv(key string) string {
+func getEnv(key string, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
+
+func mustGetEnv(key string) string {
 	val, ok := os.LookupEnv(key)
 	if !ok {
 		log.Fatalf("env var must be defined: %s", key)
@@ -15,30 +22,22 @@ func mustGetenv(key string) string {
 	return val
 }
 
-func getEnvString(key string, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
+func mustParseInt(s string) int {
+	num, err := strconv.Atoi(s)
+	if err != nil {
+		log.Fatalf("failed to parse %q as int", s)
 	}
-	return fallback
+	return num
 }
 
-func getEnvInt(key string, fallback int) int {
-	if value, ok := os.LookupEnv(key); ok {
-		i, _ := strconv.Atoi(value)
-		return i
-	}
-	return fallback
-}
-
-func getEnvBool(key string, fallback bool) bool {
-	if value, ok := os.LookupEnv(key); ok {
-		if strings.ToLower(value) == "true" {
-			return true
-		}
-		if value == "1" {
-			return true
-		}
+func mustParseBool(s string) bool {
+	switch strings.ToLower(s) {
+	case "yes", "true", "1":
+		return true
+	case "no", "false", "0":
+		return false
+	default:
+		log.Fatalf("failed to parse %q as bool", s)
 		return false
 	}
-	return fallback
 }
