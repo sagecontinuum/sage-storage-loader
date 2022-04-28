@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -14,16 +13,20 @@ import (
 
 const DoneFilename = ".done"
 
+var (
+	errWalkDirStopped = errors.New("walk stopped")
+)
+
 func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 	patterns := []string{
 		filepath.Join(root, "node-*", "uploads", "*", "*", "*", "data"),      // uploads without a namespace
 		filepath.Join(root, "node-*", "uploads", "*", "*", "*", "*", "data"), // uploads with a namespace
 	}
 
-	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		select {
 		case <-stop:
-			return fmt.Errorf("walk stopped")
+			return errWalkDirStopped
 		default:
 		}
 
@@ -58,12 +61,18 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 			select {
 			case jobs <- Job{Root: root, Dir: reldir}:
 			case <-stop:
-				return fmt.Errorf("walk stopped")
+				return errWalkDirStopped
 			}
 		}
 
 		return nil
 	})
+
+	if errors.Is(err, errWalkDirStopped) {
+		return nil
+	}
+
+	return err
 }
 
 func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) {
