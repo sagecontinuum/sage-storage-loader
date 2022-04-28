@@ -1,4 +1,15 @@
+# intended for local testing only, not deployment to production
 services:
+  loader:
+    build: .
+    environment:
+      - LOADER_DATA_DIR=/home-dirs
+      - LOADER_S3_ENDPOINT=http://minio:9000
+      - LOADER_S3_ACCESS_KEY_ID=admin
+      - LOADER_S3_SECRET_ACCESS_KEY=password
+      - LOADER_S3_BUCKET=test-data
+    volumes:
+      - "./test-data:/home-dirs"
   minio:
     image: minio/minio
     command: [ "server", "/data", "--console-address", ":9001" ]
@@ -8,12 +19,3 @@ services:
     environment:
       - MINIO_ROOT_USER=admin
       - MINIO_ROOT_PASSWORD=password
-  loader:
-    build: .
-    environment:
-      - s3Endpoint=http://minio:9000
-      - s3accessKeyID=admin
-      - s3secretAccessKey=password
-      - s3bucket=test-data
-    volumes:
-      - "./test-data:/home-dirs"

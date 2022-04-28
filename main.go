@@ -118,7 +118,7 @@ func ScanAndProcessDir(config LoaderConfig) error {
 		close(stop)
 	}()
 
-	jobs, errc := fillJobQueue(stop, config.RootDir)
+	jobs, errc := fillJobQueue(stop, config.DataDir)
 
 	results := make(chan string)
 
@@ -135,11 +135,11 @@ func ScanAndProcessDir(config LoaderConfig) error {
 			}
 
 			worker := &Worker{
-				DeleteFilesOnSuccess: config.DeleteFilesOnSuccess,
-				Uploader:             uploader,
-				Jobs:                 jobs,
-				Results:              results,
-				Stop:                 stop,
+				DeleteFilesAfterUpload: config.DeleteFilesAfterUpload,
+				Uploader:               uploader,
+				Jobs:                   jobs,
+				Results:                results,
+				Stop:                   stop,
 			}
 			worker.Run()
 		}()
@@ -163,28 +163,28 @@ func ScanAndProcessDir(config LoaderConfig) error {
 }
 
 type LoaderConfig struct {
-	RootDir              string
-	S3Config             S3FileUploaderConfig
-	DeleteFilesOnSuccess bool
-	NumWorkers           int
+	DataDir                string
+	S3Config               S3FileUploaderConfig
+	DeleteFilesAfterUpload bool
+	NumWorkers             int
 }
 
 func mustGetS3UploaderConfig() S3FileUploaderConfig {
 	return S3FileUploaderConfig{
-		Endpoint:        mustGetEnv("s3Endpoint"),
-		AccessKeyID:     mustGetEnv("s3accessKeyID"),
-		SecretAccessKey: mustGetEnv("s3secretAccessKey"),
-		Bucket:          mustGetEnv("s3bucket"),
+		Endpoint:        mustGetEnv("LOADER_S3_ENDPOINT"),
+		AccessKeyID:     mustGetEnv("LOADER_S3_ACCESS_KEY_ID"),
+		SecretAccessKey: mustGetEnv("LOADER_S3_SECRET_ACCESS_KEY"),
+		Bucket:          mustGetEnv("LOADER_S3_BUCKET"),
 		Region:          "us-west-2",
 	}
 }
 
 func main() {
 	config := LoaderConfig{
-		NumWorkers:           mustParseInt(getEnv("workers", "1")),
-		DeleteFilesOnSuccess: mustParseBool(getEnv("delete_files_on_success", "true")),
-		RootDir:              getEnv("data_dir", "test-data"),
-		S3Config:             mustGetS3UploaderConfig(),
+		NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "1")),
+		DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
+		DataDir:                getEnv("LOADER_DATA_DIR", "/home-dirs"),
+		S3Config:               mustGetS3UploaderConfig(),
 	}
 
 	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)

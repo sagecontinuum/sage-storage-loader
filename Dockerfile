@@ -1,10 +1,10 @@
-FROM golang:1.18.1 AS builder
-WORKDIR /build
+FROM golang:1.18 AS builder
+WORKDIR /sage-storage-loader
 COPY . .
-RUN go build -ldflags="-s -w" -o /build/sage-storage-loader
+RUN go build -ldflags="-s -w"
 
 # using alpine image's root certificates for https
-FROM alpine:3.15.4
-WORKDIR /app
-COPY --from=builder /build/sage-storage-loader /app/sage-storage-loader
-ENTRYPOINT [ "/app/sage-storage-loader" ]
+FROM alpine:3.15
+# FROM scratch
+COPY --from=builder /sage-storage-loader/sage-storage-loader /usr/bin/sage-storage-loader
+ENTRYPOINT [ "/usr/bin/sage-storage-loader" ]

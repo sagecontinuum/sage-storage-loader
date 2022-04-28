@@ -15,11 +15,11 @@ type Job struct {
 }
 
 type Worker struct {
-	Uploader             FileUploader
-	DeleteFilesOnSuccess bool
-	Jobs                 <-chan Job      // job inputs from pipeline
-	Results              chan<- string   // result outputs to pipeline
-	Stop                 <-chan struct{} // shared pipeline stop signal
+	Uploader               FileUploader
+	DeleteFilesAfterUpload bool
+	Jobs                   <-chan Job      // job inputs from pipeline
+	Results                chan<- string   // result outputs to pipeline
+	Stop                   <-chan struct{} // shared pipeline stop signal
 }
 
 type MetaData struct {
@@ -121,7 +121,7 @@ func (w *Worker) Process(job Job) error {
 	// TODO(sean) If we see the need to support various clean up strategies,
 	// we should just make this step plugable. For example, maybe instead of
 	// deleting, we want to move files to a done directory.
-	if w.DeleteFilesOnSuccess {
+	if w.DeleteFilesAfterUpload {
 		// Clean up data, meta and done files.
 		for _, name := range []string{dataPath, metaPath, donePath} {
 			if err := os.Remove(name); err != nil {

@@ -255,8 +255,8 @@ func TestScanAndProcess(t *testing.T) {
 
 			uploader := newMockUploader()
 			worker := &Worker{
-				DeleteFilesOnSuccess: true,
-				Uploader:             uploader,
+				DeleteFilesAfterUpload: true,
+				Uploader:               uploader,
 			}
 
 			scanAndProcessDirOnce(worker, root)
