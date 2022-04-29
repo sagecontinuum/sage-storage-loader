@@ -3,14 +3,14 @@ services:
   loader:
     build: .
     environment:
-      - LOADER_DATA_DIR=/home-dirs
+      - LOADER_NUM_WORKERS=3
+      - LOADER_DATA_DIR=/data
       - LOADER_S3_ENDPOINT=http://minio:9000
       - LOADER_S3_ACCESS_KEY_ID=admin
       - LOADER_S3_SECRET_ACCESS_KEY=password
       - LOADER_S3_BUCKET=node-data
-      - LOADER_NUM_WORKERS=3
     volumes:
-      - "./test-data:/home-dirs"
+      - "./test-data:/data"
 
   minio:
     image: minio/minio
