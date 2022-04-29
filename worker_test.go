@@ -56,7 +56,7 @@ func (up *mockUploader) UploadFile(src, dst string, meta *MetaData) error {
 }
 
 func scanAndProcessDirOnce(worker *Worker, root string) error {
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	jobs := make(chan Job)
 

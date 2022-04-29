@@ -177,7 +177,7 @@ func main() {
 	}
 	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 
 	// add user cancel handler
 	sig := make(chan os.Signal, 1)
