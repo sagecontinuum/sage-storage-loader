@@ -81,7 +81,7 @@ func parseUploadPath(dir string) (*UploadInfo, error) {
 func (w *Worker) Process(job Job) error {
 	p, err := parseUploadPath(job.Dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("error parsing upload path: %s", err.Error())
 	}
 
 	dataPath := filepath.Join(job.Root, job.Dir, "data")
@@ -91,7 +91,7 @@ func (w *Worker) Process(job Job) error {
 	var meta MetaData
 
 	if err := readMetaFile(metaPath, &meta); err != nil {
-		return err
+		return fmt.Errorf("error reading meta file: %s", err.Error())
 	}
 
 	// Add info extracted from path.
@@ -105,15 +105,15 @@ func (w *Worker) Process(job Job) error {
 	s3path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
 
 	if err := w.Uploader.UploadFile(dataPath, filepath.Join(s3path, targetNameData), &meta); err != nil {
-		return err
+		return fmt.Errorf("error uploading data file: %s", err.Error())
 	}
 
 	if err := w.Uploader.UploadFile(metaPath, filepath.Join(s3path, targetNameMeta), nil); err != nil {
-		return err
+		return fmt.Errorf("error uploading meta file: %s", err.Error())
 	}
 
 	if err := os.WriteFile(donePath, []byte{}, 0o644); err != nil {
-		return fmt.Errorf("could not create flag file: %s", err.Error())
+		return fmt.Errorf("error creating flag file: %s", err.Error())
 	}
 
 	// TODO(sean) If we see the need to support various clean up strategies,
@@ -123,7 +123,7 @@ func (w *Worker) Process(job Job) error {
 		// Clean up data, meta and done files.
 		for _, name := range []string{dataPath, metaPath, donePath} {
 			if err := os.Remove(name); err != nil {
-				return fmt.Errorf("failed to clean up %s", name)
+				return fmt.Errorf("error cleaning up %s: %s", name, err.Error())
 			}
 		}
 

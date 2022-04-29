@@ -156,6 +156,26 @@ func TestScanAndProcess(t *testing.T) {
 				data:   []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow3.flac"}}`),
 			},
 		},
+		"EmptyMeta": {
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
+				data: []byte(`we don't know this filename`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
+				data: []byte(``),
+			},
+		},
+		"EmptyMetaBadJSON": {
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
+				data: []byte(`we don't know this filename`),
+			},
+			{
+				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
+				data: []byte(`{32-}`),
+			},
+		},
 		"MissingMetaField": {
 			{
 				path: "node-000048b02d15bc7c/uploads/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
