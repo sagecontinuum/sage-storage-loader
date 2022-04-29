@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,12 +56,12 @@ func (up *mockUploader) UploadFile(src, dst string, meta *MetaData) error {
 }
 
 func scanAndProcessDirOnce(worker *Worker, root string) error {
-	stop := make(chan struct{})
-	defer close(stop)
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
 	jobs := make(chan Job)
 
 	go func() {
-		scanForJobs(stop, jobs, root)
+		scanForJobs(ctx, jobs, root)
 		close(jobs)
 	}()
 

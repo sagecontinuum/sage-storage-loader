@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"log"
@@ -21,7 +22,7 @@ var (
 const versionPattern = "[0-9]*.[0-9]*.[0-9]*"
 const timeShasumPattern = "[0-9]*-[0-9a-f]*"
 
-func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
+func scanForJobs(ctx context.Context, jobs chan<- Job, root string) error {
 	patterns := []string{
 		filepath.Join(root, "node-*", "uploads", "*", versionPattern, timeShasumPattern, "data"),      // uploads without a namespace
 		filepath.Join(root, "node-*", "uploads", "*", "*", versionPattern, timeShasumPattern, "data"), // uploads with a namespace
@@ -29,7 +30,7 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			return errWalkDirStopped
 		default:
 		}
@@ -68,7 +69,7 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 
 			select {
 			case jobs <- Job{Root: root, Dir: reldir}:
-			case <-stop:
+			case <-ctx.Done():
 				return errWalkDirStopped
 			}
 		}
@@ -83,7 +84,7 @@ func scanForJobs(stop <-chan struct{}, jobs chan<- Job, root string) error {
 	return err
 }
 
-func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) {
+func fillJobQueue(ctx context.Context, root string) (<-chan Job, <-chan error) {
 	jobs := make(chan Job)
 	errc := make(chan error, 1)
 
@@ -91,7 +92,7 @@ func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) 
 		defer close(jobs)
 		for {
 			log.Printf("scanning for jobs...")
-			if err := scanForJobs(stop, jobs, root); err != nil {
+			if err := scanForJobs(ctx, jobs, root); err != nil {
 				errc <- err
 				return
 			}
@@ -99,7 +100,7 @@ func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) 
 
 			select {
 			case <-time.After(10 * time.Second):
-			case <-stop:
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -108,17 +109,8 @@ func fillJobQueue(stop <-chan struct{}, root string) (<-chan Job, <-chan error) 
 	return jobs, errc
 }
 
-func ScanAndProcessDir(config LoaderConfig) error {
-	stop := make(chan struct{})
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
-	go func() {
-		<-sig
-		log.Printf("stopping...")
-		close(stop)
-	}()
-
-	jobs, errc := fillJobQueue(stop, config.DataDir)
+func ScanAndProcessDir(ctx context.Context, config LoaderConfig) error {
+	jobs, errc := fillJobQueue(ctx, config.DataDir)
 
 	results := make(chan string)
 
@@ -137,11 +129,8 @@ func ScanAndProcessDir(config LoaderConfig) error {
 			worker := &Worker{
 				DeleteFilesAfterUpload: config.DeleteFilesAfterUpload,
 				Uploader:               uploader,
-				Jobs:                   jobs,
-				Results:                results,
-				Stop:                   stop,
 			}
-			worker.Run()
+			worker.Run(ctx, jobs, results)
 		}()
 	}
 
@@ -186,10 +175,21 @@ func main() {
 		DataDir:                getEnv("LOADER_DATA_DIR", "/home-dirs"),
 		S3Config:               mustGetS3UploaderConfig(),
 	}
-
 	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)
 
-	if err := ScanAndProcessDir(config); err != nil {
-		log.Fatalf("loader stopped: %s", err.Error())
+	ctx, cancel := context.WithCancel(context.TODO())
+
+	// add user cancel handler
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	go func() {
+		<-sig
+		log.Printf("stopping loader...")
+		cancel()
+	}()
+
+	log.Printf("starting loader...")
+	if err := ScanAndProcessDir(ctx, config); err != nil {
+		log.Fatalf("loader stopped with error: %s", err.Error())
 	}
 }

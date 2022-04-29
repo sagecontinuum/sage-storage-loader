@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,9 +18,6 @@ type Job struct {
 type Worker struct {
 	Uploader               FileUploader
 	DeleteFilesAfterUpload bool
-	Jobs                   <-chan Job      // job inputs from pipeline
-	Results                chan<- string   // result outputs to pipeline
-	Stop                   <-chan struct{} // shared pipeline stop signal
 }
 
 type MetaData struct {
@@ -37,8 +35,8 @@ type UploadInfo struct {
 	Version   string
 }
 
-func (worker *Worker) Run() {
-	for job := range worker.Jobs {
+func (worker *Worker) Run(ctx context.Context, jobs <-chan Job, results chan<- string) {
+	for job := range jobs {
 		var result string
 
 		if err := worker.Process(job); err != nil {
@@ -48,8 +46,8 @@ func (worker *Worker) Run() {
 		}
 
 		select {
-		case worker.Results <- result:
-		case <-worker.Stop:
+		case results <- result:
+		case <-ctx.Done():
 			return
 		}
 	}
