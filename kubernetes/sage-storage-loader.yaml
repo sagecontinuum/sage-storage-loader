@@ -12,31 +12,15 @@ spec:
         app: sage-storage-loader
     spec:
       containers:
-      - name: sage-storage-loader
-        image: waggle/sage-uploader
-        envFrom:
-        - configMapRef:
-            name: sage-storage-loader-config-env
-        volumeMounts:
-          - name: data
-            mountPath: /data
+        - name: sage-storage-loader
+          image: waggle/sage-uploader
+          envFrom:
+            - configMapRef:
+                name: sage-storage-loader-config-env
+          volumeMounts:
+            - name: data
+              mountPath: /data
       volumes:
-      - name: data
-        persistentVolumeClaim:
-          claimName: home-dirs
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: sage-storage-loader-config-env
-data:
-  workers: "4"
-  data_dir: /data
-  delete_files_on_success: "false"
-  one_fs_scan_only: "false"
-  fs_sleep_sec: "300"
-
-  s3Endpoint: ""
-  s3accessKeyID: ""
-  s3secretAccessKey: ""
-  s3bucket: sage
+        - name: data
+          persistentVolumeClaim:
+            claimName: home-dirs
