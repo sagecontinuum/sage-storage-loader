@@ -13,7 +13,7 @@ spec:
     spec:
       containers:
         - name: sage-storage-loader
-          image: waggle/sage-uploader
+          image: waggle/sage-storage-loader
           envFrom:
             - configMapRef:
                 name: sage-storage-loader-config-env
