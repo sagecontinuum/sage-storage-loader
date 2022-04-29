@@ -170,9 +170,9 @@ func mustGetS3UploaderConfig() S3FileUploaderConfig {
 
 func main() {
 	config := LoaderConfig{
-		NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "1")),
+		NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
 		DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
-		DataDir:                getEnv("LOADER_DATA_DIR", "/home-dirs"),
+		DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
 		S3Config:               mustGetS3UploaderConfig(),
 	}
 	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)
