@@ -177,16 +177,7 @@ func main() {
 	}
 	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// add user cancel handler
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
-	go func() {
-		<-sig
-		log.Printf("stopping loader...")
-		cancel()
-	}()
+	ctx, _ := signal.NotifyContext(context.Background())
 
 	log.Printf("starting loader...")
 	if err := ScanAndProcessDir(ctx, config); err != nil {
