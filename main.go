@@ -25,7 +25,9 @@ const timeShasumPattern = "[0-9]*-[0-9a-f]*"
 func scanForJobs(ctx context.Context, jobs chan<- Job, root string) error {
 	patterns := []string{
 		filepath.Join(root, "node-*", "uploads", "*", versionPattern, timeShasumPattern, "data"),      // uploads without a namespace
+		filepath.Join(root, "node-*", "uploads", "*", "latest", timeShasumPattern, "data"),            // uploads without a namespace (latest tag)
 		filepath.Join(root, "node-*", "uploads", "*", "*", versionPattern, timeShasumPattern, "data"), // uploads with a namespace
+		filepath.Join(root, "node-*", "uploads", "*", "*", "latest", timeShasumPattern, "data"),       // uploads with a namespace (latest tag)
 	}
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
