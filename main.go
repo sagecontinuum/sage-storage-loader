@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+// TODO(sean) consider updating the design to decoupling and splitting the "scan filesystem" step into its own
+// isolated "scan" and "watch" functions. being able to scan once and close the channel would be nicer for testing.
+
 const DoneFilename = ".done"
 
 var (
