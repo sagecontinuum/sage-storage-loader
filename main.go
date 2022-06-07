@@ -179,7 +179,7 @@ func main() {
 	}
 	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)
 
-	ctx, _ := signal.NotifyContext(context.Background())
+	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	log.Printf("starting loader...")
 	if err := ScanAndProcessDir(ctx, config); err != nil {
