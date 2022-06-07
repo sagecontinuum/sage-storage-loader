@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -25,7 +26,7 @@ var (
 const versionPattern = "[0-9]*.[0-9]*.[0-9]*"
 const timeShasumPattern = "[0-9]*-[0-9a-f]*"
 
-func scanForJobs(ctx context.Context, jobs chan<- Job, root string) error {
+func walkUploads(root string, fn func(Job) error) error {
 	patterns := []string{
 		filepath.Join(root, "node-*", "uploads", "*", versionPattern, timeShasumPattern, "data"),      // uploads without a namespace
 		filepath.Join(root, "node-*", "uploads", "*", "latest", timeShasumPattern, "data"),            // uploads without a namespace (latest tag)
@@ -33,13 +34,7 @@ func scanForJobs(ctx context.Context, jobs chan<- Job, root string) error {
 		filepath.Join(root, "node-*", "uploads", "*", "*", "latest", timeShasumPattern, "data"),       // uploads with a namespace (latest tag)
 	}
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		select {
-		case <-ctx.Done():
-			return errWalkDirStopped
-		default:
-		}
-
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if strings.HasPrefix(filepath.Base(path), ".") {
 			return fs.SkipDir
 		}
@@ -47,9 +42,7 @@ func scanForJobs(ctx context.Context, jobs chan<- Job, root string) error {
 		for _, pattern := range patterns {
 			ok, err := filepath.Match(pattern, path)
 			if err != nil {
-				// According to the docs, this will only fail if the pattern is invalid. I just fail here
-				// since there's no way to recover and it will indicate a typo in the pattern list.
-				log.Fatalf("bad glob pattern: %s", err.Error())
+				return fmt.Errorf("bad glob pattern: %s", err.Error())
 			}
 			if !ok {
 				continue
@@ -72,20 +65,28 @@ func scanForJobs(ctx context.Context, jobs chan<- Job, root string) error {
 				return err
 			}
 
-			select {
-			case jobs <- Job{Root: root, Dir: reldir}:
-			case <-ctx.Done():
-				return errWalkDirStopped
+			if err := fn(Job{Root: root, Dir: reldir}); err != nil {
+				return err
 			}
 		}
 
 		return nil
 	})
+}
+
+func scanForJobs(ctx context.Context, jobs chan<- Job, root string) error {
+	err := walkUploads(root, func(job Job) error {
+		select {
+		case jobs <- job:
+			return nil
+		case <-ctx.Done():
+			return errWalkDirStopped
+		}
+	})
 
 	if errors.Is(err, errWalkDirStopped) {
 		return nil
 	}
-
 	return err
 }
 
