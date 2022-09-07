@@ -86,6 +86,18 @@ func TestScanAndProcess(t *testing.T) {
 				data:   []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
 			},
 		},
+		"DefaultSageJobLeadingV": {
+			{
+				path:   "node-000048b02d15bc7c/uploads/imagesampler-top/v0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
+				upload: "node-data/sage/sage-imagesampler-top-v0.2.5/000048b02d15bc7c/1638576647406523064-wow1.txt",
+				data:   []byte(`some data`),
+			},
+			{
+				path:   "node-000048b02d15bc7c/uploads/imagesampler-top/v0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/meta",
+				upload: "node-data/sage/sage-imagesampler-top-v0.2.5/000048b02d15bc7c/1638576647406523064-wow1.txt.meta",
+				data:   []byte(`{"ts":1638576647406523064,"labels":{"filename":"wow1.txt"}}`),
+			},
+		},
 		"Job": {
 			{
 				path:   "node-000048b02d15bc7c/uploads/Pluginctl/imagesampler-top/0.2.5/1638576647406523064-9801739daae44ec5293d4e1f53d3f4d2d426d91c/data",
