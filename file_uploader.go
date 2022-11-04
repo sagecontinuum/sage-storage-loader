@@ -64,6 +64,11 @@ func (up *s3FileUploader) UploadFile(src, dst string, meta *MetaData) error {
 		return fmt.Errorf("could not create a new uploader")
 	}
 
+	stat, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
 	f, err := os.Open(src)
 	if err != nil {
 		return err
@@ -81,6 +86,12 @@ func (up *s3FileUploader) UploadFile(src, dst string, meta *MetaData) error {
 	}); err != nil {
 		return fmt.Errorf("s3 uploader failed: %s", err.Error())
 	}
+
+	// update metrics
+	// TODO(sean) make these non-global variables
+	// TODO(sean) think about splitting data vs meta files
+	uploadsProcessedTotal.Inc()
+	uploadsProcessedBytes.Add(float64(stat.Size()))
 
 	return nil
 }

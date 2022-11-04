@@ -20,6 +20,9 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+          ports:
+            - name: metrics
+              containerPort: 8080
       volumes:
         - name: data
           persistentVolumeClaim:

@@ -5,12 +5,29 @@ import (
 	"errors"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+// TODO(sean) make this part of the service
+var (
+	uploadsProcessedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "storageloader_uploads_total",
+		Help: "Total number of uploads processed.",
+	})
+	uploadsProcessedBytes = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "storageloader_uploads_bytes_total",
+		Help: "Total upload bytes processed.",
+	})
 )
 
 // TODO(sean) consider updating the design to decoupling and splitting the "scan filesystem" step into its own
@@ -189,6 +206,10 @@ func main() {
 	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
+
+	log.Printf("starting metrics server...")
+	http.Handle("/metrics", promhttp.Handler())
+	go http.ListenAndServe(":8080", nil)
 
 	log.Printf("starting loader...")
 	if err := ScanAndProcessDir(ctx, config); err != nil {
