@@ -20,14 +20,32 @@ import (
 
 // TODO(sean) make this part of the service
 var (
-	uploadsProcessedTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "storageloader_uploads_total",
-		Help: "Total number of uploads processed.",
-	})
-	uploadsProcessedBytes = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "storageloader_uploads_bytes_total",
-		Help: "Total upload bytes processed.",
-	})
+	uploadsProcessedTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "storageloader_uploads_total",
+			Help: "Total number of uploads processed.",
+		},
+	)
+	uploadsProcessedBytes = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "storageloader_upload_bytes_total",
+			Help: "Total upload bytes processed.",
+		},
+	)
+	uploadsProcessedTotalByNode = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "storageloader_uploads_total_by_node_total",
+			Help: "Total number of uploads processed by node.",
+		},
+		[]string{"node"},
+	)
+	uploadsProcessedBytesByNode = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "storageloader_upload_bytes_by_node_total",
+			Help: "Total number of uploads processed by node.",
+		},
+		[]string{"node"},
+	)
 )
 
 // TODO(sean) consider updating the design to decoupling and splitting the "scan filesystem" step into its own

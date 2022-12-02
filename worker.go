@@ -108,7 +108,7 @@ func (w *Worker) Process(job Job) error {
 		return fmt.Errorf("error uploading data file: %s", err.Error())
 	}
 
-	if err := w.Uploader.UploadFile(metaPath, filepath.Join(s3path, targetNameMeta), nil); err != nil {
+	if err := w.Uploader.UploadFile(metaPath, filepath.Join(s3path, targetNameMeta), &meta); err != nil {
 		return fmt.Errorf("error uploading meta file: %s", err.Error())
 	}
 
