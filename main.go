@@ -67,11 +67,13 @@ func scanForJobs(ctx context.Context, jobs chan<- Job, root string) error {
 		filepath.Join(root, "node-*", "uploads", "*", versionPattern, timeShasumPattern, "data"),         // version
 		filepath.Join(root, "node-*", "uploads", "*", prefixedVersionPattern, timeShasumPattern, "data"), // prefixed version
 		filepath.Join(root, "node-*", "uploads", "*", "latest", timeShasumPattern, "data"),               // latest tag
+		filepath.Join(root, "node-*", "uploads", "*", "test", timeShasumPattern, "data"),                 // test tag
 
 		// with namespace
 		filepath.Join(root, "node-*", "uploads", "*", "*", versionPattern, timeShasumPattern, "data"),         // version
 		filepath.Join(root, "node-*", "uploads", "*", "*", prefixedVersionPattern, timeShasumPattern, "data"), // prefixed version
 		filepath.Join(root, "node-*", "uploads", "*", "*", "latest", timeShasumPattern, "data"),               // latest tag
+		filepath.Join(root, "node-*", "uploads", "*", "*", "test", timeShasumPattern, "data"),                 // test tag
 	}
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
