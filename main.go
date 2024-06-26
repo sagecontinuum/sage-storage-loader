@@ -189,7 +189,7 @@ func ScanAndProcessDir(ctx context.Context, config LoaderConfig) error {
 				}
 			default:
 				// Handle unknown or unsupported config type
-				log.Fatalf("unsupported uploader config type: %T", config.Config)
+				log.Fatalf("unsupported uploader config type: %T", cfg)
 			}
 
 			worker := &Worker{
