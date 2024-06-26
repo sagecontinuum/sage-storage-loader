@@ -115,16 +115,7 @@ func (up *s3FileUploader) UploadFile(src, dst string, meta *MetaData) error {
 		return fmt.Errorf("s3 uploader failed: %s", err.Error())
 	}
 
-	// update metrics
-	// TODO(sean) make these non-global variables
-	// TODO(sean) think about splitting data vs meta files
-	// TODO(sean) figure out how to get VSN metadata for metrics
-	size := float64(stat.Size())
-	node := meta.Meta["node"]
-	uploadsProcessedTotal.Inc()
-	uploadsProcessedBytes.Add(size)
-	uploadsProcessedTotalByNode.WithLabelValues(node).Inc()
-	uploadsProcessedBytesByNode.WithLabelValues(node).Add(size)
+	uploadFileMetrics(stat, meta)
 
 	return nil
 }
