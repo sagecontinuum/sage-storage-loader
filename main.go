@@ -169,9 +169,27 @@ func ScanAndProcessDir(ctx context.Context, config LoaderConfig) error {
 		go func() {
 			defer wg.Done()
 
-			uploader, err := NewS3FileUploader(config.S3Config)
-			if err != nil {
-				log.Fatalf("failed to create s3 uploader: %s", err.Error())
+			//init vars
+			var uploader FileUploader
+			var err error
+
+			//create uploader based on DB type
+			switch cfg := config.Config.(type) {
+			case S3FileUploaderConfig:
+				uploader, err = NewS3FileUploader(cfg)
+				if err != nil {
+					log.Fatalf("failed to create s3 uploader: %s", err.Error())
+				}
+			case PelicanFileUploaderConfig:
+				jm := JwtManager{}
+				jm.init(mustGetEnv("JWT_PUBLIC_KEY_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"))
+				uploader, err = NewPelicanFileUploader(cfg, jm, mustGetEnv("JWT_PUBLIC_KEY_ID"))
+				if err != nil {
+					log.Fatalf("failed to create Pelican uploader: %s", err.Error())
+				}
+			default:
+				// Handle unknown or unsupported config type
+				log.Fatalf("unsupported uploader config type: %T", config.Config)
 			}
 
 			worker := &Worker{
@@ -228,7 +246,7 @@ func main() {
 		NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
 		DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
 		DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
-		Config:                 mustGetPelicanUploaderConfig(),
+		Config:                 mustGetPelicanUploaderConfig(), //DB type: Pelican
 	}
 	log.Printf("using Pelican at %s in bucket %s",config.Config.GetEndpoint(), config.Config.GetBucket())
 
