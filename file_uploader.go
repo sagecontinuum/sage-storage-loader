@@ -21,6 +21,11 @@ type FileUploader interface {
 	UploadFile(src, dst string, meta *MetaData) error
 }
 
+type UploaderConfig interface {
+	GetEndpoint() string
+	GetBucket() string
+}
+
 type PelicanFileUploaderConfig struct {
 	Endpoint        string
 	Bucket          string
@@ -45,6 +50,26 @@ type pelicanFileUploader struct {
 	SignedJwtToken   string
 }
 
+// GetEndpoint returns the endpoint for S3.
+func (cfg S3FileUploaderConfig) GetEndpoint() string {
+	return cfg.Endpoint
+}
+
+// GetBucket returns the bucket name for S3.
+func (cfg S3FileUploaderConfig) GetBucket() string {
+	return cfg.Bucket
+}
+
+// GetEndpoint returns the endpoint for Pelican.
+func (cfg PelicanFileUploaderConfig) GetEndpoint() string {
+	return cfg.Endpoint
+}
+
+// GetBucket returns the bucket name for Pelican.
+func (cfg PelicanFileUploaderConfig) GetBucket() string {
+	return cfg.Bucket
+}
+
 func NewS3FileUploader(config S3FileUploaderConfig) (*s3FileUploader, error) {
 	disableSSL := !strings.HasPrefix(config.Endpoint, "https")
 
@@ -66,10 +91,9 @@ func NewS3FileUploader(config S3FileUploaderConfig) (*s3FileUploader, error) {
 }
 
 //Initialize a new file uploader for Pelican by passing in a config, an initliaze JwtManager, and public key's id
-func NewPelicanFileUploader(config PelicanFileUploaderConfig, jm JwtManager, ) (*pelicanFileUploader, error) {
+func NewPelicanFileUploader(config PelicanFileUploaderConfig, jm JwtManager, keyID *string) (*pelicanFileUploader, error) {
 	// Generate JWT token
-	keyID := "1234" // Replace with actual key ID from JWKS
-	token, err := jm.generateJwtToken(&keyID)
+	token, err := jm.generateJwtToken(keyID)
 	if err != nil {
 		return nil, fmt.Errorf("error generating JWT token: %v", err)
 	}
