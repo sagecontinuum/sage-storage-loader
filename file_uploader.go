@@ -134,6 +134,7 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 	defer f.Close()
 
 	//Upload the file to Pelican
+	//TODO: how can I attach metadata to the file? similiar to S3 - FL
 	req, err := http.NewRequest("PUT", up.config.Endpoint, f)
 	if err != nil {return err}
 	req.Header.Set("Authorization", "Bearer "+string(up.SignedJwtToken))
