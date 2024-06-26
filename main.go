@@ -216,14 +216,21 @@ func mustGetS3UploaderConfig() S3FileUploaderConfig {
 	}
 }
 
+func mustGetPelicanUploaderConfig() PelicanFileUploaderConfig {
+	return PelicanFileUploaderConfig{
+		Endpoint:        mustGetEnv("LOADER_PELICAN_ENDPOINT"),
+		Bucket:          mustGetEnv("LOADER_PELICAN_BUCKET"),
+	}
+}
+
 func main() {
 	config := LoaderConfig{
 		NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
 		DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
 		DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
-		Config:                 mustGetS3UploaderConfig(),
+		Config:                 mustGetPelicanUploaderConfig(),
 	}
-	log.Printf("using s3 at %s@%s in bucket %s", config.Config.(S3FileUploaderConfig).AccessKeyID, config.Config.GetEndpoint(), config.Config.GetBucket())
+	log.Printf("using Pelican at %s in bucket %s",config.Config.GetEndpoint(), config.Config.GetBucket())
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 
