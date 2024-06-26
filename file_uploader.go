@@ -135,14 +135,10 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 
 	//Upload the file to Pelican
 	req, err := http.NewRequest("PUT", up.config.Endpoint, f)
-	if err != nil {
-		return err
-	}
+	if err != nil {return err}
 	req.Header.Set("Authorization", "Bearer "+string(up.SignedJwtToken))
 	resp, err := up.client.Do(req)
-	if err != nil {
-		return err
-	}
+	if err != nil {return err}
 	defer resp.Body.Close()
 
 	// Check response status
