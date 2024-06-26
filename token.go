@@ -137,6 +137,12 @@ func (jm *JwtManager) _signJwtToken(token *jwt.Token) (string, error) {
 
 // Creates a new signed jwt Token with the specified Claims
 func (jm *JwtManager) generateJwtToken(keyID *string) (string, error) {
+	// Check if jm is initialized
+	if jm.publicKeyConfig == nil || jm.jwks == nil {
+		return "", fmt.Errorf("JwtManager instance not properly initialized, use JwtManager.init()")
+	}
+
+	//find key
 	var selectedKey *key
 	found := false
 	for _, k := range jm.jwks.Keys {
