@@ -91,9 +91,9 @@ func NewS3FileUploader(config S3FileUploaderConfig) (*s3FileUploader, error) {
 }
 
 //Initialize a new file uploader for Pelican by passing in a config, an initliaze JwtManager, and public key's id
-func NewPelicanFileUploader(config PelicanFileUploaderConfig, jm JwtManager, keyID *string) (*pelicanFileUploader, error) {
+func NewPelicanFileUploader(config PelicanFileUploaderConfig, jm JwtManager, keyID string) (*pelicanFileUploader, error) {
 	// Generate JWT token
-	token, err := jm.generateJwtToken(keyID)
+	token, err := jm.generateJwtToken(&keyID)
 	if err != nil {
 		return nil, fmt.Errorf("error generating JWT token: %v", err)
 	}
