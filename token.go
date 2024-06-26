@@ -41,7 +41,7 @@ type PublicKeyConfig struct {
 
 // init initializes the JwtManager with provided values & performs setup tasks
 func (jm *JwtManager) init(PublicKeyConfigURL, IssuerKeyPath string) error {
-	// Example default values or setup tasks
+	//init vars
 	jm.publicKeyConfigURL = PublicKeyConfigURL
 	jm.issuerKeyPath = IssuerKeyPath
 
