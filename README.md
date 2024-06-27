@@ -19,7 +19,7 @@ The expected data flow is:
 [ staging dir ] -----------> [|||] -------+--> [ worker ] --> [ storage ]
                                           +--> [ worker ] --> [         ]
 
-                                        workers upload files to osn
+                                        workers upload files to STORAGE_TYPE
                                         and clean them up afterwards
 ```
 
