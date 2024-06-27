@@ -25,14 +25,14 @@ The expected data flow is:
 
 # Integration testing for OSN with Minio
 
-We can stand up an integration testing environment using Docker Compose:
+We can stand up an integration testing environment using Docker Compose in `/test/s3`:
 
 ```sh
 docker-compose up -d --build
 docker-compose logs -f
 ```
 
-Test uploads can be generated using `tools/generate-data-dir.py`.
+Test uploads can be generated using `tools/generate-data-dir.py`. *Make sure you move the test data to `/test/s3`*
 
 ```sh
 # generate 100 test uploads into the default test-data dir
@@ -40,3 +40,26 @@ python3 tools/generate-data-dir.py 100
 ```
 
 You can open the Minio UI at [http://localhost:9001](http://localhost:9001).
+
+# Integration testing for Pelican
+
+We can stand up an integration testing environment using Docker Compose in `/test/pelican`:
+
+```sh
+docker-compose up -d --build
+docker-compose logs -f
+```
+
+Test uploads can be generated using `tools/generate-data-dir.py`. *Make sure you move the test data to `/test/s3`*
+
+```sh
+# generate 10 test uploads into the default test-data dir
+python3 tools/generate-data-dir.py 10
+```
+
+You can check the uploads by curling for them in **LOADER_PELICAN_ENDPOINT**. For example:
+
+```sh
+#create jwt token first then run:
+curl -v -H "Authorization: Bearer $(cat token)" $(LOADER_PELICAN_ENDPOINT)/$(LOADER_PELICAN_BUCKET)/
+```
