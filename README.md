@@ -1,12 +1,13 @@
 # Sage Storage Loader
 
-This service loads files staged in a directory (on Beehive) into OSN.
+This service loads files staged in a directory (on Beehive) into [OSN](https://www.openstoragenetwork.org/) or [Pelican](https://pelicanplatform.org/). Based on LoaderConfig.Config it will use OSN or Pelican.
+**main.go is configured to use Pelican*
 
 The expected data flow is:
 
 ```txt
           rsync uploads                   sage storage loader
-[ node ] --------------> [ staging dir ] --------------------> [ osn ]
+[ node ] --------------> [ staging dir ] --------------------> [ storage ]
 ```
 
 # Architecture
@@ -15,15 +16,15 @@ The expected data flow is:
        scanner process walks staging dir
        and puts ready uploads into channel
 
-                                          +--> [ worker ] --> [     ]
-[ staging dir ] -----------> [|||] -------+--> [ worker ] --> [ osn ]
-                                          +--> [ worker ] --> [     ]
+                                          +--> [ worker ] --> [         ]
+[ staging dir ] -----------> [|||] -------+--> [ worker ] --> [ storage ]
+                                          +--> [ worker ] --> [         ]
 
                                         workers upload files to osn
                                         and clean them up afterwards
 ```
 
-# Integration testing with Minio
+# Integration testing for OSN with Minio
 
 We can stand up an integration testing environment using Docker Compose:
 
