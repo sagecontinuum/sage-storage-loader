@@ -182,7 +182,7 @@ func ScanAndProcessDir(ctx context.Context, config LoaderConfig) error {
 				}
 			case PelicanFileUploaderConfig:
 				jm := JwtManager{}
-				jm.init(mustGetEnv("JWT_PUBLIC_KEY_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"),mustGetEnv("JWT_PUBLIC_KEY_ID"))
+				jm.init(mustGetJwtManagerConfig())
 				uploader, err = NewPelicanFileUploader(cfg, jm)
 				if err != nil {
 					log.Fatalf("failed to create Pelican uploader: %s", err.Error())
@@ -241,12 +241,17 @@ func mustGetPelicanUploaderConfig() PelicanFileUploaderConfig {
 	}
 }
 
+//This function retrieves the env variables for configuring Jwt Manager and makes sure they exist.
+func mustGetJwtManagerConfig() (PublicKeyConfigURL string, IssuerKeyPath string, keyID string) {
+	return mustGetEnv("JWT_PUBLIC_KEY_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"),mustGetEnv("JWT_PUBLIC_KEY_ID")
+}
+
 func main() {
 	config := LoaderConfig{
 		NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
 		DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
 		DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
-		Config:                 mustGetPelicanUploaderConfig(), //DB type: Pelican
+		Config:                 mustGetPelicanUploaderConfig(), //Storage type: Pelican or OSN
 	}
 	log.Printf("using Pelican at %s in bucket %s",config.Config.GetEndpoint(), config.Config.GetBucket())
 
