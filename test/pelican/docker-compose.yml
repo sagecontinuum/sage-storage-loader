@@ -1,0 +1,19 @@
+# intended for local testing only, not deployment to production
+services:
+  loader:
+    image: waggle/sage-storage-loader:0.7.0
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - STORAGE_TYPE=pelican
+      - LOADER_NUM_WORKERS=3
+      - LOADER_DATA_DIR=/data
+      - LOADER_PELICAN_ENDPOINT=https://nrdstor.nationalresearchplatform.org:8443/sage
+      - LOADER_PELICAN_BUCKET=test
+      - JWT_PUBLIC_KEY_URL=https://sagecontinuum.org/.well-known/openid-configuration
+      - JWT_ISSUER_KEY_PATH=/token/issuer-key.pem
+      - JWT_PUBLIC_KEY_ID=3cfa
+    volumes:
+      - "./test-data:/data"
+      - "./token:/token"

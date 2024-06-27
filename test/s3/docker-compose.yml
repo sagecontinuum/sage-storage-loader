@@ -6,6 +6,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
+      - STORAGE_TYPE=osn
       - LOADER_NUM_WORKERS=3
       - LOADER_DATA_DIR=/data
       - LOADER_S3_ENDPOINT=http://minio:9000
