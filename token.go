@@ -140,7 +140,7 @@ func (jm *JwtManager) _signJwtToken(token *jwt.Token) (string, error) {
 		return "", fmt.Errorf("error signing token: %v", err)
 	}
 
-	fmt.Println("Generated JWT token:", signedToken)
+	fmt.Println("Generated JWT token using ",jm.issuerKeyPath)
 
 	return signedToken, nil
 }
