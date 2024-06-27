@@ -242,18 +242,35 @@ func mustGetPelicanUploaderConfig() PelicanFileUploaderConfig {
 }
 
 //This function retrieves the env variables for configuring Jwt Manager and makes sure they exist.
-func mustGetJwtManagerConfig() (PublicKeyConfigURL string, IssuerKeyPath string, keyID string) {
+func mustGetJwtManagerConfig() (PublicKeyConfigURL string, IssuerKeyPath string,keyID string) {
 	return mustGetEnv("JWT_PUBLIC_KEY_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"),mustGetEnv("JWT_PUBLIC_KEY_ID")
 }
 
 func main() {
-	config := LoaderConfig{
-		NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
-		DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
-		DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
-		Config:                 mustGetPelicanUploaderConfig(), //Storage type: Pelican or OSN
+
+	stor_type := mustGetEnv("STORAGE_TYPE")
+	var config LoaderConfig
+	switch stor_type {
+	case "osn":
+		config = LoaderConfig{
+			NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
+			DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
+			DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
+			Config:                 mustGetS3UploaderConfig(),
+		}
+		log.Printf("using s3 at %s@%s in bucket %s", config.Config.(S3FileUploaderConfig).AccessKeyID, config.Config.GetEndpoint(), config.Config.GetEndpoint())
+	case "pelican":
+		config = LoaderConfig{
+			NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
+			DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
+			DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
+			Config:                 mustGetPelicanUploaderConfig(),
+		}
+		log.Printf("using Pelican at %s in bucket %s",config.Config.GetEndpoint(), config.Config.GetBucket())
+	default:
+		// Handle unknown or unsupported type
+		log.Fatalf("unsupported storage type: %s", stor_type)
 	}
-	log.Printf("using Pelican at %s in bucket %s",config.Config.GetEndpoint(), config.Config.GetBucket())
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 
