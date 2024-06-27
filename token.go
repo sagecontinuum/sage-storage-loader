@@ -171,7 +171,7 @@ func (jm *JwtManager) generateJwtToken(keyID *string) (string, error) {
 		"ver":    "scitoken:2.0",
 		"sub":    "test",
 		"aud":    "ANY",
-		"scope":  "read:/test-write.txt write:/test-write.txt",
+		"scope":  "read:/ write:/",
 		"iat":    time.Now().Unix(),                // Issued At (current time)
 		"exp":    time.Now().Add(time.Hour).Unix(), // Expire time (1 hour from now)
 		"iss":    jm.publicKeyConfig.Issuer,
