@@ -47,7 +47,7 @@ type s3FileUploader struct {
 type pelicanFileUploader struct {
 	config           PelicanFileUploaderConfig
 	client           http.Client
-	SignedJwtToken   string
+	jm               JwtManager
 }
 
 // GetEndpoint returns the endpoint for S3.
@@ -91,17 +91,11 @@ func NewS3FileUploader(config S3FileUploaderConfig) (*s3FileUploader, error) {
 }
 
 //Initialize a new file uploader for Pelican by passing in a config, an initliaze JwtManager, and public key's id
-func NewPelicanFileUploader(config PelicanFileUploaderConfig, jm JwtManager, keyID string) (*pelicanFileUploader, error) {
-	// Generate JWT token
-	token, err := jm.generateJwtToken(&keyID)
-	if err != nil {
-		return nil, fmt.Errorf("error generating JWT token: %v", err)
-	}
-
+func NewPelicanFileUploader(config PelicanFileUploaderConfig, jm JwtManager) (*pelicanFileUploader, error) {
 	return &pelicanFileUploader{
 		config:          config,
 		client:          http.Client{},
-		SignedJwtToken:  token,	
+		jm:              jm,
 	}, nil
 }
 
@@ -158,22 +152,35 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 	defer f.Close()
 
 	//Upload the file to Pelican
-	//TODO: how can I attach metadata to the file? similiar to S3 - FL
 	req, err := http.NewRequest("PUT", up.config.Endpoint, f)
 	if err != nil {return err}
-	req.Header.Set("Authorization", "Bearer "+string(up.SignedJwtToken))
+	req.Header.Set("Authorization", "Bearer "+string(up.jm.SignedJwtToken))
 	resp, err := up.client.Do(req)
 	if err != nil {return err}
 	defer resp.Body.Close()
 
 	// Check response status
-	if resp.StatusCode != http.StatusOK {
+    if resp.StatusCode == http.StatusForbidden {
+		// JWT token expired, regenerate it
+		token, err := up.jm.generateJwtToken(&up.jm.PublicKeyID)
+		if err != nil {
+			return fmt.Errorf("error re generating JWT token: %v", err)
+		}
+		up.jm.SignedJwtToken = token
+
+		// retry uploading file
+		err = up.UploadFile(src,dst,meta)
+		if err != nil {
+			return err
+		}
+
+	} else if resp.StatusCode != http.StatusOK {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("error reading response body: %v", err)
 		}
 		return fmt.Errorf("pelican uploader failed, non-OK HTTP status: %v \n response body: %s", resp.Status, body)
-	}
+	} 
 
 	uploadFileMetrics(stat, meta)
 

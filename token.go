@@ -13,6 +13,8 @@ import (
 type JwtManager struct {
 	publicKeyConfigURL string
 	issuerKeyPath      string
+	PublicKeyID		   string
+	SignedJwtToken     string
 	publicKeyConfig    *PublicKeyConfig
 	jwks               *Jwks
 }
@@ -40,10 +42,11 @@ type PublicKeyConfig struct {
 }
 
 // init initializes the JwtManager with provided values & performs setup tasks
-func (jm *JwtManager) init(PublicKeyConfigURL, IssuerKeyPath string) error {
+func (jm *JwtManager) init(PublicKeyConfigURL, IssuerKeyPath string, keyID string) error {
 	//init vars
 	jm.publicKeyConfigURL = PublicKeyConfigURL
 	jm.issuerKeyPath = IssuerKeyPath
+	jm.PublicKeyID = keyID
 
 	// Fetch public key configuration
 	err := jm._fetchPublicKeyConfig()
@@ -56,6 +59,13 @@ func (jm *JwtManager) init(PublicKeyConfigURL, IssuerKeyPath string) error {
 	if err != nil {
 		return fmt.Errorf("error fetching JWKS: %v", err)
 	}
+
+	// Generate JWT token
+	token, err := jm.generateJwtToken(&keyID)
+	if err != nil {
+		return fmt.Errorf("error generating JWT token: %v", err)
+	}
+	jm.SignedJwtToken = token
 
 	return nil
 }
