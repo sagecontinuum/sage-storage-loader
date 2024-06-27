@@ -32,11 +32,11 @@ docker-compose up -d --build
 docker-compose logs -f
 ```
 
-Test uploads can be generated using `tools/generate-data-dir.py`. *Make sure you move the test data to `/test/s3`*
+Test uploads can be generated using `tools/generate-data-dir.py`.
 
 ```sh
-# generate 100 test uploads into the default test-data dir
-python3 tools/generate-data-dir.py 100
+# generate 100 test uploads
+python3 tools/generate-data-dir.py --data-dir test/s3/test-data 100
 ```
 
 You can open the Minio UI at [http://localhost:9001](http://localhost:9001).
@@ -50,11 +50,11 @@ docker-compose up -d --build
 docker-compose logs -f
 ```
 
-Test uploads can be generated using `tools/generate-data-dir.py`. *Make sure you move the test data to `/test/s3`*
+Test uploads can be generated using `tools/generate-data-dir.py`.
 
 ```sh
-# generate 10 test uploads into the default test-data dir
-python3 tools/generate-data-dir.py 10
+# generate 10 test uploads
+python3 tools/generate-data-dir.py --data-dir test/pelican/test-data 10
 ```
 
 You can check the uploads by curling for them in **LOADER_PELICAN_ENDPOINT**. For example:
