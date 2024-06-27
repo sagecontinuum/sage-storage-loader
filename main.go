@@ -182,8 +182,8 @@ func ScanAndProcessDir(ctx context.Context, config LoaderConfig) error {
 				}
 			case PelicanFileUploaderConfig:
 				jm := JwtManager{}
-				jm.init(mustGetEnv("JWT_PUBLIC_KEY_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"))
-				uploader, err = NewPelicanFileUploader(cfg, jm, mustGetEnv("JWT_PUBLIC_KEY_ID"))
+				jm.init(mustGetEnv("JWT_PUBLIC_KEY_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"),mustGetEnv("JWT_PUBLIC_KEY_ID"))
+				uploader, err = NewPelicanFileUploader(cfg, jm)
 				if err != nil {
 					log.Fatalf("failed to create Pelican uploader: %s", err.Error())
 				}
