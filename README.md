@@ -1,7 +1,6 @@
 # Sage Storage Loader
 
-This service loads files staged in a directory (on Beehive) into [OSN](https://www.openstoragenetwork.org/) or [Pelican](https://pelicanplatform.org/). Based on LoaderConfig.Config it will use OSN or Pelican.
-**main.go is configured to use Pelican*
+This service loads files staged in a directory (on Beehive) into [OSN](https://www.openstoragenetwork.org/) or [Pelican](https://pelicanplatform.org/). Based on env variable **STORAGE_TYPE** it will use OSN or Pelican.
 
 The expected data flow is:
 
