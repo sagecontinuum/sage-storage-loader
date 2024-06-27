@@ -50,6 +50,8 @@ docker-compose up -d --build
 docker-compose logs -f
 ```
 
+'issuer-key.pem' for use with Pelican can be generated using the [SciTokens](https://scitokens.org) Python library and tools. More information can be found here [Pelican Config](https://github.com/waggle-sensor/honeyhouse-config/tree/main/beehives/sage-beehive/config/pelican).
+
 Test uploads can be generated using `tools/generate-data-dir.py`.
 
 ```sh
