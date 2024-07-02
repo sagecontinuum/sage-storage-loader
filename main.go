@@ -243,7 +243,7 @@ func mustGetPelicanUploaderConfig() PelicanFileUploaderConfig {
 
 //This function retrieves the env variables for configuring Jwt Manager and makes sure they exist.
 func mustGetJwtManagerConfig() (PublicKeyConfigURL string, IssuerKeyPath string,keyID string) {
-	return mustGetEnv("JWT_PUBLIC_KEY_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"),mustGetEnv("JWT_PUBLIC_KEY_ID")
+	return mustGetEnv("JWT_PUBLIC_KEY_CONFIG_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"),mustGetEnv("JWT_PUBLIC_KEY_ID")
 }
 
 func main() {
