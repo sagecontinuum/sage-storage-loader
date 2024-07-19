@@ -102,13 +102,13 @@ func (w *Worker) Process(job Job) error {
 	labelFilename := meta.Meta["filename"]
 	targetNameData := fmt.Sprintf("%d-%s", meta.Timestamp.UnixNano(), labelFilename)
 	targetNameMeta := fmt.Sprintf("%d-%s.meta", meta.Timestamp.UnixNano(), labelFilename)
-	s3path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
+	path := fmt.Sprintf("node-data/%s/sage-%s-%s/%s", p.Namespace, p.Name, p.Version, p.NodeID)
 
-	if err := w.Uploader.UploadFile(dataPath, filepath.Join(s3path, targetNameData), &meta); err != nil {
+	if err := w.Uploader.UploadFile(dataPath, filepath.Join(path, targetNameData), &meta); err != nil {
 		return fmt.Errorf("error uploading data file: %s", err.Error())
 	}
 
-	if err := w.Uploader.UploadFile(metaPath, filepath.Join(s3path, targetNameMeta), &meta); err != nil {
+	if err := w.Uploader.UploadFile(metaPath, filepath.Join(path, targetNameMeta), &meta); err != nil {
 		return fmt.Errorf("error uploading meta file: %s", err.Error())
 	}
 
@@ -135,7 +135,7 @@ func (w *Worker) Process(job Job) error {
 		// before we can upload. In this case, that particular rsync will fail and then
 		// will be tried again later.
 		//
-		// In order for this to happen, the OSN loader would have to upload and clean up the
+		// In order for this to happen, the loader would have to upload and clean up the
 		// last staged item for a task right when that task is posting a new upload. This seems
 		// potentially rare enough that I'd opt for simpler, more robust cleanup logic for now.
 		for p := filepath.Dir(dataPath); filepath.Base(p) != "uploads"; p = filepath.Dir(p) {

@@ -169,9 +169,27 @@ func ScanAndProcessDir(ctx context.Context, config LoaderConfig) error {
 		go func() {
 			defer wg.Done()
 
-			uploader, err := NewS3FileUploader(config.S3Config)
-			if err != nil {
-				log.Fatalf("failed to create s3 uploader: %s", err.Error())
+			//init vars
+			var uploader FileUploader
+			var err error
+
+			//create uploader based on DB type
+			switch cfg := config.Config.(type) {
+			case S3FileUploaderConfig:
+				uploader, err = NewS3FileUploader(cfg)
+				if err != nil {
+					log.Fatalf("failed to create s3 uploader: %s", err.Error())
+				}
+			case PelicanFileUploaderConfig:
+				jm := JwtManager{}
+				jm.init(mustGetJwtManagerConfig())
+				uploader, err = NewPelicanFileUploader(cfg, jm)
+				if err != nil {
+					log.Fatalf("failed to create Pelican uploader: %s", err.Error())
+				}
+			default:
+				// Handle unknown or unsupported config type
+				log.Fatalf("unsupported uploader config type: %T", cfg)
 			}
 
 			worker := &Worker{
@@ -201,7 +219,7 @@ func ScanAndProcessDir(ctx context.Context, config LoaderConfig) error {
 
 type LoaderConfig struct {
 	DataDir                string
-	S3Config               S3FileUploaderConfig
+	Config                 UploaderConfig
 	DeleteFilesAfterUpload bool
 	NumWorkers             int
 }
@@ -216,14 +234,43 @@ func mustGetS3UploaderConfig() S3FileUploaderConfig {
 	}
 }
 
-func main() {
-	config := LoaderConfig{
-		NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
-		DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
-		DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
-		S3Config:               mustGetS3UploaderConfig(),
+func mustGetPelicanUploaderConfig() PelicanFileUploaderConfig {
+	return PelicanFileUploaderConfig{
+		Endpoint:        mustGetEnv("LOADER_PELICAN_ENDPOINT"),
+		Bucket:          mustGetEnv("LOADER_PELICAN_BUCKET"),
 	}
-	log.Printf("using s3 at %s@%s in bucket %s", config.S3Config.AccessKeyID, config.S3Config.Endpoint, config.S3Config.Bucket)
+}
+
+//This function retrieves the env variables for configuring Jwt Manager and makes sure they exist.
+func mustGetJwtManagerConfig() (PublicKeyConfigURL string, IssuerKeyPath string,keyID string) {
+	return mustGetEnv("JWT_PUBLIC_KEY_CONFIG_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"),mustGetEnv("JWT_PUBLIC_KEY_ID")
+}
+
+func main() {
+
+	stor_type := mustGetEnv("STORAGE_TYPE")
+	var config LoaderConfig
+	switch stor_type {
+	case "osn":
+		config = LoaderConfig{
+			NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
+			DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
+			DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
+			Config:                 mustGetS3UploaderConfig(),
+		}
+		log.Printf("using s3 at %s@%s in bucket %s", config.Config.(S3FileUploaderConfig).AccessKeyID, config.Config.GetEndpoint(), config.Config.GetEndpoint())
+	case "pelican":
+		config = LoaderConfig{
+			NumWorkers:             mustParseInt(getEnv("LOADER_NUM_WORKERS", "3")),
+			DeleteFilesAfterUpload: mustParseBool(getEnv("LOADER_DELETE_FILES_AFTER_UPLOAD", "true")),
+			DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
+			Config:                 mustGetPelicanUploaderConfig(),
+		}
+		log.Printf("using Pelican at %s in bucket %s",config.Config.GetEndpoint(), config.Config.GetBucket())
+	default:
+		// Handle unknown or unsupported type
+		log.Fatalf("unsupported storage type: %s", stor_type)
+	}
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 
