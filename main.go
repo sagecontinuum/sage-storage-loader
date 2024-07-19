@@ -236,14 +236,14 @@ func mustGetS3UploaderConfig() S3FileUploaderConfig {
 
 func mustGetPelicanUploaderConfig() PelicanFileUploaderConfig {
 	return PelicanFileUploaderConfig{
-		Endpoint:        mustGetEnv("LOADER_PELICAN_ENDPOINT"),
-		Bucket:          mustGetEnv("LOADER_PELICAN_BUCKET"),
+		Endpoint: mustGetEnv("LOADER_PELICAN_ENDPOINT"),
+		Bucket:   mustGetEnv("LOADER_PELICAN_BUCKET"),
 	}
 }
 
-//This function retrieves the env variables for configuring Jwt Manager and makes sure they exist.
-func mustGetJwtManagerConfig() (PublicKeyConfigURL string, IssuerKeyPath string,keyID string) {
-	return mustGetEnv("JWT_PUBLIC_KEY_CONFIG_URL"),mustGetEnv("JWT_ISSUER_KEY_PATH"),mustGetEnv("JWT_PUBLIC_KEY_ID")
+// This function retrieves the env variables for configuring Jwt Manager and makes sure they exist.
+func mustGetJwtManagerConfig() (PublicKeyConfigURL string, IssuerKeyPath string, keyID string) {
+	return mustGetEnv("JWT_PUBLIC_KEY_CONFIG_URL"), mustGetEnv("JWT_ISSUER_KEY_PATH"), mustGetEnv("JWT_PUBLIC_KEY_ID")
 }
 
 func main() {
@@ -266,7 +266,7 @@ func main() {
 			DataDir:                getEnv("LOADER_DATA_DIR", "/data"),
 			Config:                 mustGetPelicanUploaderConfig(),
 		}
-		log.Printf("using Pelican at %s in bucket %s",config.Config.GetEndpoint(), config.Config.GetBucket())
+		log.Printf("using Pelican at %s in bucket %s", config.Config.GetEndpoint(), config.Config.GetBucket())
 	default:
 		// Handle unknown or unsupported type
 		log.Fatalf("unsupported storage type: %s", stor_type)

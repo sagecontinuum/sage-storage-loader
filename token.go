@@ -3,17 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"os"
 	"time"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // JwtManager manages operations related to JWT tokens
 type JwtManager struct {
 	publicKeyConfigURL string
 	issuerKeyPath      string
-	PublicKeyID		   string
+	PublicKeyID        string
 	SignedJwtToken     string
 	publicKeyConfig    *PublicKeyConfig
 	jwks               *Jwks
@@ -140,7 +140,7 @@ func (jm *JwtManager) _signJwtToken(token *jwt.Token) (string, error) {
 		return "", fmt.Errorf("error signing token: %v", err)
 	}
 
-	fmt.Println("Generated JWT token using ",jm.issuerKeyPath)
+	fmt.Println("Generated JWT token using ", jm.issuerKeyPath)
 
 	return signedToken, nil
 }

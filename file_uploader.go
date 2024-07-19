@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -21,14 +22,22 @@ type FileUploader interface {
 	UploadFile(src, dst string, meta *MetaData) error
 }
 
+// NOTE(sean) Not a big deal but we can probably just use the FileUploader as the primary abstraction
+// rather than introducing UploaderConfig. The details of the config can be tracked as part of the
+// specific FileUploader internals.
+//
+// As an example, a FileUploader which simply logs that UploadFile would have been called and does
+// nothing else probably doesn't really need to know about endpoints or buckets.
+//
+// I'll leave this as a simple item to clean up when we have some free cycles.
 type UploaderConfig interface {
 	GetEndpoint() string
 	GetBucket() string
 }
 
 type PelicanFileUploaderConfig struct {
-	Endpoint        string
-	Bucket          string
+	Endpoint string
+	Bucket   string
 }
 
 type S3FileUploaderConfig struct {
@@ -45,9 +54,9 @@ type s3FileUploader struct {
 }
 
 type pelicanFileUploader struct {
-	config           PelicanFileUploaderConfig
-	client           http.Client
-	jm               JwtManager
+	config PelicanFileUploaderConfig
+	client http.Client
+	jm     JwtManager
 }
 
 // GetEndpoint returns the endpoint for S3.
@@ -90,12 +99,12 @@ func NewS3FileUploader(config S3FileUploaderConfig) (*s3FileUploader, error) {
 	}, nil
 }
 
-//Initialize a new file uploader for Pelican by passing in a config, an initliaze JwtManager, and public key's id
+// Initialize a new file uploader for Pelican by passing in a config, an initliaze JwtManager, and public key's id
 func NewPelicanFileUploader(config PelicanFileUploaderConfig, jm JwtManager) (*pelicanFileUploader, error) {
 	return &pelicanFileUploader{
-		config:          config,
-		client:          http.Client{},
-		jm:              jm,
+		config: config,
+		client: http.Client{},
+		jm:     jm,
 	}, nil
 }
 
@@ -153,14 +162,18 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 
 	//Upload the file to Pelican
 	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/%s/%s", up.config.Endpoint, up.config.Bucket, dst), f)
-	if err != nil {return err}
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Authorization", "Bearer "+string(up.jm.SignedJwtToken))
 	resp, err := up.client.Do(req)
-	if err != nil {return err}
+	if err != nil {
+		return err
+	}
 	defer resp.Body.Close()
 
 	// Check response status
-    if resp.StatusCode == http.StatusForbidden {
+	if resp.StatusCode == http.StatusForbidden {
 		// JWT token expired, regenerate it
 		token, err := up.jm.generateJwtToken(&up.jm.PublicKeyID)
 		if err != nil {
@@ -169,7 +182,7 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 		up.jm.SignedJwtToken = token
 
 		// retry uploading file
-		err = up.UploadFile(src,dst,meta)
+		err = up.UploadFile(src, dst, meta)
 		if err != nil {
 			return err
 		}
@@ -180,7 +193,7 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 			return fmt.Errorf("error reading response body: %v", err)
 		}
 		return fmt.Errorf("pelican uploader failed, non-OK HTTP status: %v \n response body: %s", resp.Status, body)
-	} 
+	}
 
 	uploadFileMetrics(stat, meta)
 
