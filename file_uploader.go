@@ -10,7 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"path"
+	"net/url"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -162,7 +162,10 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 	defer f.Close()
 
 	//Upload the file to Pelican
-	urlPath := path.Join(up.config.Endpoint, up.config.Bucket, dst)
+	urlPath, err := url.JoinPath(up.config.Endpoint, up.config.Bucket, dst)
+	if err != nil {
+		return err
+	}
 	req, err := http.NewRequest("PUT", urlPath, f)
 	if err != nil {
 		return err
