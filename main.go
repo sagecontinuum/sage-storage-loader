@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -207,6 +208,11 @@ func ScanAndProcessDir(ctx context.Context, config LoaderConfig) error {
 
 	for r := range results {
 		log.Printf("processed %s", r)
+
+		// give up on special case of JwtManager issue until we can debug more.
+		if strings.Contains(r, "JwtManager instance not properly initialized") {
+			return fmt.Errorf("giving up on JwtManager instance not properly initialized error")
+		}
 	}
 
 	select {
