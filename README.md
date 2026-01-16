@@ -1,6 +1,6 @@
 # Sage Storage Loader
 
-This service loads files staged in a directory (on Beehive) into [OSN](https://www.openstoragenetwork.org/) or [Pelican](https://pelicanplatform.org/). Based on env variable **STORAGE_TYPE** it will use OSN or Pelican.
+This service loads files staged in a directory (on Beehive) into [OSN](https://www.openstoragenetwork.org/) or [Pelican](https://pelicanplatform.org/). Based on env variable **STORAGE_TYPE** it will use OSN or Pelican. All uploaded files will be in a folder called `node-data` in **STORAGE_TYPE**.
 
 The expected data flow is:
 
@@ -65,3 +65,21 @@ You can check the uploads by curling for them in **LOADER_PELICAN_ENDPOINT**. Fo
 #create jwt token first then run:
 curl -v -H "Authorization: Bearer $(cat token)" $(LOADER_PELICAN_ENDPOINT)/$(LOADER_PELICAN_BUCKET)/
 ```
+
+# Environment Variable Definitions
+- **STORAGE_TYPE**: Type of storage to upload files to (Pelican or OSN).
+- **LOADER_NUM_WORKERS**: The number of workers uploading files to STORAGE_TYPE.
+- **LOADER_DATA_DIR**: The staging directory the workers will be grabbing files from.
+
+## Pelican Only
+- **LOADER_PELICAN_ENDPOINT**: The Pelican endpoint to use.
+- **LOADER_PELICAN_BUCKET**: The directory to place `/node-data` in Pelican. *If left blank `/node-data` will be in root.*
+- **JWT_PUBLIC_KEY_CONFIG_URL**: The url to retrieve Jwt public key configuration.
+- **JWT_ISSUER_KEY_PATH**: The issuer key cert to generate Jwt tokens.
+- **JWT_PUBLIC_KEY_ID**: The id of the public key to use.
+
+## OSN Only
+- **LOADER_S3_ENDPOINT**: The S3 endpoint to use.
+- **LOADER_S3_ACCESS_KEY_ID**: The Access Key ID used for authenticating and authorizing access to the S3 service.
+- **LOADER_S3_SECRET_ACCESS_KEY**: The Secret Access Key paired with LOADER_S3_ACCESS_KEY_ID.
+- **LOADER_S3_BUCKET**: The S3 bucket to place `/node-data` in.
