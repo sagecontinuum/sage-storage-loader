@@ -172,8 +172,11 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 	}
 	defer resp.Body.Close()
 
-	// Check response status
-	if resp.StatusCode == http.StatusForbidden {
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated:
+		uploadFileMetrics(stat, meta)
+		return nil
+	case http.StatusForbidden:
 		// JWT token expired, regenerate it
 		token, err := up.jm.generateJwtToken(&up.jm.PublicKeyID)
 		if err != nil {
@@ -182,22 +185,14 @@ func (up *pelicanFileUploader) UploadFile(src, dst string, meta *MetaData) error
 		up.jm.SignedJwtToken = token
 
 		// retry uploading file
-		err = up.UploadFile(src, dst, meta)
-		if err != nil {
-			return err
-		}
-
-	} else if resp.StatusCode != http.StatusOK {
+		return up.UploadFile(src, dst, meta)
+	default:
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("error reading response body: %v", err)
 		}
 		return fmt.Errorf("pelican uploader failed, non-OK HTTP status: %v \n response body: %s", resp.Status, body)
 	}
-
-	uploadFileMetrics(stat, meta)
-
-	return nil
 }
 
 // update file metrics
